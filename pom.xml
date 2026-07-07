@@ -67,6 +67,13 @@
       <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
     </dependency>
 
+    <!-- Extraction déterministe de relations depuis le code Java -->
+    <dependency>
+      <groupId>com.github.javaparser</groupId>
+      <artifactId>javaparser-core</artifactId>
+      <version>3.26.4</version>
+    </dependency>
+
     <dependency>
       <groupId>org.liquibase</groupId>
       <artifactId>liquibase-core</artifactId>
