@@ -1,0 +1,37 @@
+# Configuration d'équipe — copier vers team-config.yml et adapter.
+# Un seul fichier pilote toute l'instance : aucun nom de projet n'est codé en dur.
+# Les secrets (tokens API, mots de passe) vont dans .env, JAMAIS ici.
+
+team: equipe-passerelle
+
+llm:
+  provider: ollama              # ollama (local, confidentiel) | gemini | openai-compatible
+  model: qwen2.5:7b-instruct
+  fallback-model: qwen2.5:3b    # optionnel : questions descriptives simples
+  embedding-model: bge-m3       # toujours local (multilingue FR + code)
+
+sources:
+  confluence:
+    base-url: https://confluence.example.com
+    spaces: [PASS, ARCHI]
+  gitlab:
+    base-url: https://gitlab.example.com
+    group: passerelle           # découverte automatique des repos du groupe
+    branches: [main, develop]
+  jira:
+    base-url: https://jira.example.com
+    projects: [PASS, INFRA]
+
+# Résolution d'entités : toutes les façons de nommer un projet/sujet -> id canonique.
+# Critique pour le graphe : sans alias, les nœuds se fragmentent.
+aliases:
+  easyloc: ["Easy Loc", "easy-loc", "EASYLOC"]
+  epsilon: ["Epsilon", "epsilon-service"]
+
+schedule:
+  nightly: "0 0 2 * * *"        # cron Spring (6 champs) — batch nocturne 02:00
+
+extractors:
+  java: true
+  typescript: true
+  python: false
