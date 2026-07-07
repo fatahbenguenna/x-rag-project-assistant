@@ -1,11 +1,14 @@
 package com.domwil.xrag.adapter.out.persistence;
 
+import com.domwil.xrag.domain.model.Chunk;
 import com.domwil.xrag.domain.model.ScoredChunk;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -22,6 +25,39 @@ public class JdbcChunkRepository implements ChunkRepository {
 
     public JdbcChunkRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Override
+    public void upsert(Collection<Chunk> chunks) {
+        jdbc.batchUpdate("""
+                        INSERT INTO rag_chunks (id, source, project, path, chunk_index, title, content,
+                                                url, node_ids, embedding, indexed_version, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::text[], ?::vector, ?, now())
+                        ON CONFLICT (id) DO UPDATE SET
+                            project = EXCLUDED.project, title = EXCLUDED.title,
+                            content = EXCLUDED.content, url = EXCLUDED.url,
+                            node_ids = EXCLUDED.node_ids, embedding = EXCLUDED.embedding,
+                            indexed_version = EXCLUDED.indexed_version, updated_at = now()
+                        """,
+                chunks.stream().map(c -> new Object[]{
+                        c.id(), c.source(), c.project(), c.path(), c.chunkIndex(), c.title(),
+                        c.content(), c.url(), PgArrays.textArray(c.nodeIds()),
+                        PgArrays.vector(c.embedding()), c.indexedVersion()
+                }).toList());
+    }
+
+    @Override
+    public Optional<String> indexedVersion(String source, String path) {
+        List<String> versions = jdbc.queryForList(
+                "SELECT indexed_version FROM rag_chunks WHERE source = ? AND path = ? LIMIT 1",
+                String.class, source, path);
+        return versions.isEmpty() ? Optional.empty() : Optional.ofNullable(versions.getFirst());
+    }
+
+    @Override
+    public void deleteOtherChunksOf(String source, String path, Collection<String> keepIds) {
+        jdbc.update("DELETE FROM rag_chunks WHERE source = ? AND path = ? AND NOT (id = ANY(?::text[]))",
+                source, path, PgArrays.textArray(keepIds));
     }
 
     @Override
