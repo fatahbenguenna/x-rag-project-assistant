@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: x-rag-project-assistant
+  # Configuration d'équipe externalisée (voir team-config.example.yml)
+  config:
+    import: "optional:file:${TEAM_CONFIG:./team-config.yml}"
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:xrag}
+    username: ${POSTGRES_USER:xrag}
+    password: ${POSTGRES_PASSWORD:}
+  liquibase:
+    # Activé quand les changelogs arrivent (PR "feat: schema")
+    enabled: false
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: qwen2.5:7b-instruct
+      embedding:
+        options:
+          model: bge-m3
+    vectorstore:
+      pgvector:
+        # Schéma géré par Liquibase, pas par Spring AI
+        initialize-schema: false
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+---
+# Profil gemini : LLM distant (si politique de confidentialité OK). Embeddings restent locaux.
+spring:
+  config:
+    activate:
+      on-profile: gemini
+  ai:
+    vertex:
+      ai:
+        gemini:
+          project-id: ${GEMINI_PROJECT_ID:}
+          location: ${GEMINI_LOCATION:europe-west1}
