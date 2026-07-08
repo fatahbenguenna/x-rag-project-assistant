@@ -46,6 +46,16 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
 
 Mises à jour : `docker compose pull && docker compose up -d` (Liquibase migre au démarrage).
 
+## CI et images versionnées
+
+- Chaque PR et chaque push sur `main` exécutent `mvn verify` (workflow `ci`).
+- Chaque tag `vX.Y.Z` publie l'image `rag-api` versionnée (workflow `release`) :
+  sur **GHCR** par défaut, ou sur un **registry privé** si les secrets
+  `REGISTRY_URL` / `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` sont définis dans le dépôt.
+- Côté équipe : renseigner `RAG_API_IMAGE` dans `.env` avec l'image versionnée,
+  puis `docker compose pull && docker compose up -d`. Sans `RAG_API_IMAGE`,
+  le compose construit l'image localement (mode développement).
+
 ## Services Docker Compose
 
 | Service      | Rôle                                   | Port  |

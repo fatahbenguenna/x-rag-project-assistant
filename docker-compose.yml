@@ -29,8 +29,10 @@ services:
     restart: unless-stopped
 
   rag-api:
+    # Image versionnée du registry (docker compose pull) ; `build: .` reste
+    # disponible pour le développement (docker compose build).
     build: .
-    image: xrag/rag-api:local
+    image: ${RAG_API_IMAGE:-xrag/rag-api:local}
     container_name: xrag-api
     env_file: .env
     environment:
