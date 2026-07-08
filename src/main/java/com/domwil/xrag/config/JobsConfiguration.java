@@ -7,21 +7,26 @@ import com.domwil.xrag.application.ProjectSheetService;
 import com.domwil.xrag.application.RagChatService;
 import com.domwil.xrag.application.SmokeTestService;
 import com.domwil.xrag.application.SyncService;
+import com.domwil.xrag.adapter.out.notify.LoggingNotifier;
+import com.domwil.xrag.adapter.out.notify.WebhookNotifier;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import com.domwil.xrag.domain.port.ConnectorRegistry;
 import com.domwil.xrag.domain.port.GraphRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
 import com.domwil.xrag.domain.port.MaintenanceRepository;
 import com.domwil.xrag.domain.port.MergeRequestRepository;
+import com.domwil.xrag.domain.port.Notifier;
 import com.domwil.xrag.domain.port.RelationExtractor;
 import com.domwil.xrag.domain.port.SyncStateRepository;
 import com.domwil.xrag.extraction.MergeRequestGraphMapper;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.client.RestClient;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.SchedulingConfigurer;
@@ -82,10 +87,17 @@ public class JobsConfiguration implements SchedulingConfigurer {
     }
 
     @Bean
+    public Notifier notifier(@Value("${NOTIFY_WEBHOOK_URL:}") String webhookUrl) {
+        return webhookUrl.isBlank() ? new LoggingNotifier()
+                : new WebhookNotifier(RestClient.create(), webhookUrl);
+    }
+
+    @Bean
     public NightlyBatchService nightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                                    SyncService syncService, MaintenanceRepository maintenance,
-                                                   ProjectSheetService projectSheets, SmokeTestService smokeTests) {
+                                                   ProjectSheetService projectSheets, SmokeTestService smokeTests,
+                                                   Notifier notifier) {
         return new NightlyBatchService(jdbc, embeddingModel, syncService, maintenance,
-                projectSheets, smokeTests);
+                projectSheets, smokeTests, notifier);
     }
 }

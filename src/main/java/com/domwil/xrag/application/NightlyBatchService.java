@@ -1,6 +1,7 @@
 package com.domwil.xrag.application;
 
 import com.domwil.xrag.domain.port.MaintenanceRepository;
+import com.domwil.xrag.domain.port.Notifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -12,8 +13,9 @@ import java.time.Instant;
 /**
  * Batch nocturne (02:00, cible terminé ~02:45) :
  * health check → syncs incrémentales → réconciliation → VACUUM ANALYZE →
- * fiches projet → smoke test. Règle absolue : jamais de destruction d'index ;
- * en cas d'échec du health check, on abandonne et l'index de la veille reste servi.
+ * fiches projet → smoke test → notification. Règle absolue : jamais de
+ * destruction d'index ; en cas d'échec du health check, on abandonne et
+ * l'index de la veille reste servi.
  */
 public class NightlyBatchService {
 
@@ -25,16 +27,19 @@ public class NightlyBatchService {
     private final MaintenanceRepository maintenance;
     private final ProjectSheetService projectSheets;
     private final SmokeTestService smokeTests;
+    private final Notifier notifier;
 
     public NightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                SyncService syncService, MaintenanceRepository maintenance,
-                               ProjectSheetService projectSheets, SmokeTestService smokeTests) {
+                               ProjectSheetService projectSheets, SmokeTestService smokeTests,
+                               Notifier notifier) {
         this.jdbc = jdbc;
         this.embeddingModel = embeddingModel;
         this.syncService = syncService;
         this.maintenance = maintenance;
         this.projectSheets = projectSheets;
         this.smokeTests = smokeTests;
+        this.notifier = notifier;
     }
 
     public void run() {
@@ -45,20 +50,32 @@ public class NightlyBatchService {
         } catch (Exception e) {
             log.error("ALERTE batch nocturne : health check en échec, batch abandonné — "
                     + "l'index de la veille reste servi", e);
+            notifier.alert("Batch nocturne abandonné",
+                    "Health check en échec (" + e.getMessage() + ") — l'index de la veille reste servi.");
             return;
         }
 
-        syncService.syncAll(false);
+        try {
+            syncService.syncAll(false);
 
-        int purged = maintenance.purgeOrphanNodes();
-        log.info("Réconciliation : {} nœuds orphelins purgés", purged);
-        maintenance.vacuumAnalyze();
+            int purged = maintenance.purgeOrphanNodes();
+            log.info("Réconciliation : {} nœuds orphelins purgés", purged);
+            maintenance.vacuumAnalyze();
 
-        projectSheets.refreshAll();
-        smokeTests.run();
+            projectSheets.refreshAll();
+            String smokeReport = smokeTests.run();
 
-        log.info("Batch nocturne terminé en {} min — stats : {}",
-                Duration.between(start, Instant.now()).toMinutes(), maintenance.stats());
+            long minutes = Duration.between(start, Instant.now()).toMinutes();
+            String stats = String.valueOf(maintenance.stats());
+            log.info("Batch nocturne terminé en {} min — stats : {}", minutes, stats);
+            notifier.info("Batch nocturne terminé en " + minutes + " min",
+                    "Stats : " + stats + "\nSmoke test :\n" + smokeReport);
+        } catch (Exception e) {
+            log.error("ALERTE batch nocturne : échec en cours de batch (upsert only, "
+                    + "l'index déjà servi reste intact)", e);
+            notifier.alert("Batch nocturne en échec",
+                    "Étape interrompue : " + e.getMessage() + " — l'index déjà servi reste intact.");
+        }
     }
 
     /** Postgres + Ollama (embedding minimal) doivent répondre avant de toucher à l'index. */
