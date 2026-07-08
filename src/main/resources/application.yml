@@ -39,15 +39,17 @@ management:
 
 ---
 # Profil gemini : LLM distant (si politique de confidentialité OK). Embeddings restent locaux.
+# Spring AI 2.x : module google-genai (mode Vertex AI via project-id/location,
+# ou Gemini Developer API via spring.ai.google.genai.api-key).
 spring:
   config:
     activate:
       on-profile: gemini
   ai:
     model:
-      chat: vertex-ai-gemini
-    vertex:
-      ai:
-        gemini:
-          project-id: ${GEMINI_PROJECT_ID:}
-          location: ${GEMINI_LOCATION:europe-west1}
+      chat: google-genai
+    google:
+      genai:
+        vertex-ai: true
+        project-id: ${GEMINI_PROJECT_ID:}
+        location: ${GEMINI_LOCATION:europe-west1}

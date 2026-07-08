@@ -3,7 +3,7 @@ package com.domwil.xrag.adapter.out.confluence;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
 
