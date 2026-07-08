@@ -10,8 +10,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.api.OllamaOptions;
-import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatModel;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,12 +36,12 @@ public class LlmConfiguration {
     @Bean
     public ChatClient chatClient(TeamConfig config,
                                  ObjectProvider<OllamaChatModel> ollama,
-                                 ObjectProvider<VertexAiGeminiChatModel> gemini) {
+                                 ObjectProvider<GoogleGenAiChatModel> gemini) {
         String provider = config.llm().provider();
         return switch (provider) {
             case "ollama" -> ChatClient.builder(require(ollama.getIfAvailable(), provider))
                     .defaultSystem(SYSTEM_PROMPT)
-                    .defaultOptions(OllamaOptions.builder().model(config.llm().model()).build())
+                    .defaultOptions(OllamaChatOptions.builder().model(config.llm().model()))
                     .build();
             case "gemini" -> ChatClient.builder(require(gemini.getIfAvailable(), provider))
                     .defaultSystem(SYSTEM_PROMPT)

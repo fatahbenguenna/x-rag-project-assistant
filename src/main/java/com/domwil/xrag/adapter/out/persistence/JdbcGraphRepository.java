@@ -3,8 +3,8 @@ package com.domwil.xrag.adapter.out.persistence;
 import com.domwil.xrag.domain.model.GraphEdge;
 import com.domwil.xrag.domain.model.GraphNode;
 import com.domwil.xrag.domain.port.GraphRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -66,7 +66,7 @@ public class JdbcGraphRepository implements GraphRepository {
     private String toJson(Map<String, Object> props) {
         try {
             return json.writeValueAsString(props);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException("props non sérialisables en JSON", e);
         }
     }

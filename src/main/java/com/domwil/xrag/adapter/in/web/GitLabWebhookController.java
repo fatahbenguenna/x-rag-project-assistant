@@ -2,7 +2,7 @@ package com.domwil.xrag.adapter.in.web;
 
 import com.domwil.xrag.adapter.out.gitlab.GitLabConnector;
 import com.domwil.xrag.application.SyncService;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
