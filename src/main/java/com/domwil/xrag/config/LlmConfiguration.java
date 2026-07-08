@@ -2,6 +2,7 @@ package com.domwil.xrag.config;
 
 import com.domwil.xrag.application.EntityDetector;
 import com.domwil.xrag.application.MergeRequestTools;
+import com.domwil.xrag.application.ModelRouter;
 import com.domwil.xrag.application.RagChatService;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
@@ -62,11 +63,20 @@ public class LlmConfiguration {
     }
 
     @Bean
+    public ModelRouter modelRouter(TeamConfig config) {
+        // Le fallback ne s'applique qu'en local : sur un provider distant, le
+        // modèle principal est déjà rapide et le nom qwen n'aurait aucun sens.
+        String fallback = "ollama".equals(config.llm().provider()) ? config.llm().fallbackModel() : null;
+        return new ModelRouter(fallback);
+    }
+
+    @Bean
     public RagChatService ragChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                                          EntityDetector entityDetector, GraphSearchRepository graphSearch,
-                                         ChunkRepository chunks, MergeRequestTools mergeRequestTools) {
+                                         ChunkRepository chunks, MergeRequestTools mergeRequestTools,
+                                         ModelRouter modelRouter) {
         return new RagChatService(chatClient, embeddingModel, entityDetector, graphSearch,
-                chunks, mergeRequestTools);
+                chunks, mergeRequestTools, modelRouter);
     }
 
     private static <T extends ChatModel> T require(T model, String provider) {

@@ -48,16 +48,19 @@ public class RagChatService {
     private final GraphSearchRepository graphSearch;
     private final ChunkRepository chunks;
     private final MergeRequestTools mergeRequestTools;
+    private final ModelRouter modelRouter;
 
     public RagChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                           EntityDetector entityDetector, GraphSearchRepository graphSearch,
-                          ChunkRepository chunks, MergeRequestTools mergeRequestTools) {
+                          ChunkRepository chunks, MergeRequestTools mergeRequestTools,
+                          ModelRouter modelRouter) {
         this.chatClient = chatClient;
         this.embeddingModel = embeddingModel;
         this.entityDetector = entityDetector;
         this.graphSearch = graphSearch;
         this.chunks = chunks;
         this.mergeRequestTools = mergeRequestTools;
+        this.modelRouter = modelRouter;
     }
 
     public Flux<String> answer(String question, String project) {
@@ -69,15 +72,18 @@ public class RagChatService {
         log.debug("Retrieval : {} entités, {} nœuds de sous-graphe, {} chunks",
                 seeds.size(), subgraph.nodes().size(), retrieved.size());
 
-        return chatClient.prompt()
+        var spec = chatClient.prompt()
                 .user(user -> user.text(USER_TEMPLATE)
                         .param("graph", subgraph.isEmpty() ? "(aucune relation trouvée)"
                                 : GraphTextSerializer.serialize(subgraph))
                         .param("documents", retrieved.isEmpty() ? "(aucun document trouvé)"
                                 : formatChunks(retrieved))
-                        .param("question", question))
-                .tools(mergeRequestTools)
-                .stream()
+                        .param("question", question));
+        var routed = modelRouter.route(question);
+        // Descriptif → modèle fallback léger, sans tools (les petits modèles sont
+        // peu fiables en function calling et le descriptif n'en a pas besoin).
+        spec = routed != null ? spec.options(routed) : spec.tools(mergeRequestTools);
+        return spec.stream()
                 .content();
     }
 
