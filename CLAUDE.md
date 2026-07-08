@@ -102,8 +102,8 @@ extractors: { java: true, typescript: true, python: false }
 
 ## Dépôt GitHub et plan de PRs
 
-- Créer un **dépôt privé** `x-rag-project-assistant` sous **Domwil-Sarl** (vérifier : organisation ou compte utilisateur ? point resté ouvert).
-- Workflow : une PR par étape, mergée avant d'ouvrir la suivante :
+- Dépôt : **`fatahbenguenna/x-rag-project-assistant`** (privé, compte utilisateur GitHub — l'option Domwil-Sarl initialement envisagée n'a pas été retenue).
+- Workflow : une PR par étape, mergée avant d'ouvrir la suivante — **plan entièrement déroulé** (PRs #1 à #7 mergées, puis #9 bump Spring Boot 3.5.16 et #10 migration Spring Boot 4.1 + Spring AI 2.0) :
   1. `chore: bootstrap` — structure du repo, docker-compose, README d'onboarding, `.env.example`
   2. `feat: config` — `team-config.example.yml` + `@ConfigurationProperties`
   3. `feat: schema` — changelogs **Liquibase** (pgvector, chunks, graph_nodes/edges, métadonnées MR)
@@ -111,7 +111,7 @@ extractors: { java: true, typescript: true, python: false }
   5. `feat: extractors` — plugins Java/TS + résolution d'alias
   6. `feat: retrieval` — recherche hybride vecteur + graphe + tools, endpoint chat streamé
   7. `feat: nightly` — jobs schedulés, fiches projet, smoke tests, bootstrap.sh
-- Auth : fine-grained PAT, resource owner Domwil-Sarl, permissions Administration (write) + Contents (write) + Pull requests (write), expiration courte, révocation après usage.
+- Auth : fine-grained PAT, resource owner fatahbenguenna, permissions Administration (write) + Contents (write) + Pull requests (write), expiration courte, révocation après usage.
 
 ## Attentes de performance (cadrage validé)
 
