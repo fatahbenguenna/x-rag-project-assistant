@@ -1,0 +1,76 @@
+name: x-rag-project-assistant
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-xrag}
+      POSTGRES_USER: ${POSTGRES_USER:-xrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant, voir .env.example}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xrag} -d ${POSTGRES_DB:-xrag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      # Garde le modèle chargé en mémoire (warm-up quotidien à 07:30 côté rag-api)
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-24h}
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  rag-api:
+    build: .
+    image: ${RAG_API_IMAGE:-x-rag-project-assistant:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-ollama}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-xrag}
+      POSTGRES_USER: ${POSTGRES_USER:-xrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      OLLAMA_BASE_URL: http://ollama:11434
+      CONFLUENCE_TOKEN: ${CONFLUENCE_TOKEN:-}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+      JIRA_TOKEN: ${JIRA_TOKEN:-}
+      GEMINI_PROJECT_ID: ${GEMINI_PROJECT_ID:-}
+    volumes:
+      - ./team-config.yml:/app/team-config.yml:ro
+    ports:
+      - "${RAG_API_PORT:-8080}:8080"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: unless-stopped
+    profiles: ["ui"]
+    depends_on:
+      - rag-api
+    environment:
+      OPENAI_API_BASE_URL: http://rag-api:8080/v1
+      OPENAI_API_KEY: ${OPEN_WEBUI_API_KEY:-not-used}
+      WEBUI_AUTH: "true"
+    volumes:
+      - open-webui:/app/backend/data
+    ports:
+      - "${OPEN_WEBUI_PORT:-3000}:8080"
+
+volumes:
+  pgdata:
+  ollama:
+  open-webui:

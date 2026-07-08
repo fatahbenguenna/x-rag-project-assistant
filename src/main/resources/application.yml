@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: x-rag-project-assistant
+  profiles:
+    # ollama (local, confidentiel) par défaut ; alternative : gemini / endpoint OpenAI-compatible
+    default: ollama
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    com.domwil.xrag: INFO

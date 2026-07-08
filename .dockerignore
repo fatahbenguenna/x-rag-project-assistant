@@ -1,0 +1,7 @@
+target/
+.git/
+.env
+team-config.yml
+*.md
+.idea/
+.vscode/
