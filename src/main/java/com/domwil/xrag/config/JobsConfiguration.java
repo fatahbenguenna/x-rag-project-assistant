@@ -1,6 +1,7 @@
 package com.domwil.xrag.config;
 
 import com.domwil.xrag.application.AliasResolver;
+import com.domwil.xrag.application.GraphQualityService;
 import com.domwil.xrag.application.IngestionService;
 import com.domwil.xrag.application.NightlyBatchService;
 import com.domwil.xrag.application.ProjectSheetService;
@@ -11,6 +12,7 @@ import com.domwil.xrag.adapter.out.notify.LoggingNotifier;
 import com.domwil.xrag.adapter.out.notify.WebhookNotifier;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import com.domwil.xrag.domain.port.ConnectorRegistry;
+import com.domwil.xrag.domain.port.GraphQualityRepository;
 import com.domwil.xrag.domain.port.GraphRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
 import com.domwil.xrag.domain.port.MaintenanceRepository;
@@ -87,6 +89,11 @@ public class JobsConfiguration implements SchedulingConfigurer {
     }
 
     @Bean
+    public GraphQualityService graphQualityService(GraphQualityRepository repository) {
+        return new GraphQualityService(repository);
+    }
+
+    @Bean
     public Notifier notifier(@Value("${NOTIFY_WEBHOOK_URL:}") String webhookUrl) {
         return webhookUrl.isBlank() ? new LoggingNotifier()
                 : new WebhookNotifier(RestClient.create(), webhookUrl);
@@ -96,8 +103,8 @@ public class JobsConfiguration implements SchedulingConfigurer {
     public NightlyBatchService nightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                                    SyncService syncService, MaintenanceRepository maintenance,
                                                    ProjectSheetService projectSheets, SmokeTestService smokeTests,
-                                                   Notifier notifier) {
+                                                   GraphQualityService graphQuality, Notifier notifier) {
         return new NightlyBatchService(jdbc, embeddingModel, syncService, maintenance,
-                projectSheets, smokeTests, notifier);
+                projectSheets, smokeTests, graphQuality, notifier);
     }
 }

@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.in.web;
 
+import com.domwil.xrag.application.GraphQualityService;
 import com.domwil.xrag.application.NightlyBatchService;
 import com.domwil.xrag.application.SmokeTestService;
 import com.domwil.xrag.application.SyncService;
@@ -24,15 +25,18 @@ public class AdminController {
     private final SmokeTestService smokeTests;
     private final MaintenanceRepository maintenance;
     private final NightlyBatchService nightlyBatch;
+    private final GraphQualityService graphQuality;
     private final TaskExecutor taskExecutor;
 
     public AdminController(SyncService syncService, SmokeTestService smokeTests,
                            MaintenanceRepository maintenance, NightlyBatchService nightlyBatch,
+                           GraphQualityService graphQuality,
                            @Qualifier("applicationTaskExecutor") TaskExecutor taskExecutor) {
         this.syncService = syncService;
         this.smokeTests = smokeTests;
         this.maintenance = maintenance;
         this.nightlyBatch = nightlyBatch;
+        this.graphQuality = graphQuality;
         this.taskExecutor = taskExecutor;
     }
 
@@ -58,5 +62,15 @@ public class AdminController {
     @GetMapping("/status")
     public Map<String, Object> status() {
         return maintenance.stats();
+    }
+
+    /** Couverture du graphe + trous détectés (décision 10 : extraction LLM seulement si trous). */
+    @GetMapping("/graph-quality")
+    public Map<String, Object> graphQuality() {
+        var report = graphQuality.evaluate();
+        return Map.of(
+                "metrics", report.metrics(),
+                "gaps", report.gaps(),
+                "verdict", report.verdict());
     }
 }

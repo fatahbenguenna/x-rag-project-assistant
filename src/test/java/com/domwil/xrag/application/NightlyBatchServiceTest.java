@@ -23,10 +23,11 @@ class NightlyBatchServiceTest {
     private final MaintenanceRepository maintenance = mock(MaintenanceRepository.class);
     private final ProjectSheetService sheets = mock(ProjectSheetService.class);
     private final SmokeTestService smoke = mock(SmokeTestService.class);
+    private final GraphQualityService graphQuality = mock(GraphQualityService.class);
     private final Notifier notifier = mock(Notifier.class);
 
     private final NightlyBatchService batch = new NightlyBatchService(
-            jdbc, embeddings, sync, maintenance, sheets, smoke, notifier);
+            jdbc, embeddings, sync, maintenance, sheets, smoke, graphQuality, notifier);
 
     @Test
     void healthCheckEnEchecAlerteEtAbandonne() {
@@ -44,6 +45,9 @@ class NightlyBatchServiceTest {
         when(jdbc.queryForObject(eq("SELECT 1"), eq(Integer.class))).thenReturn(1);
         when(embeddings.embed(anyString())).thenReturn(new float[]{1f});
         when(smoke.run()).thenReturn("OK en 12 s — Explique-moi le projet elog");
+        when(graphQuality.evaluate()).thenReturn(new GraphQualityService.Report(
+                new com.domwil.xrag.domain.model.GraphQualityMetrics(10, 20, 0, 100, 90, java.util.List.of()),
+                java.util.List.of()));
         when(maintenance.stats()).thenReturn(java.util.Map.of("chunks", (Object) 42L));
 
         batch.run();

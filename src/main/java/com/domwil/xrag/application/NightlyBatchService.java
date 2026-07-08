@@ -27,18 +27,20 @@ public class NightlyBatchService {
     private final MaintenanceRepository maintenance;
     private final ProjectSheetService projectSheets;
     private final SmokeTestService smokeTests;
+    private final GraphQualityService graphQuality;
     private final Notifier notifier;
 
     public NightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                SyncService syncService, MaintenanceRepository maintenance,
                                ProjectSheetService projectSheets, SmokeTestService smokeTests,
-                               Notifier notifier) {
+                               GraphQualityService graphQuality, Notifier notifier) {
         this.jdbc = jdbc;
         this.embeddingModel = embeddingModel;
         this.syncService = syncService;
         this.maintenance = maintenance;
         this.projectSheets = projectSheets;
         this.smokeTests = smokeTests;
+        this.graphQuality = graphQuality;
         this.notifier = notifier;
     }
 
@@ -63,13 +65,15 @@ public class NightlyBatchService {
             maintenance.vacuumAnalyze();
 
             projectSheets.refreshAll();
+            String graphVerdict = graphQuality.evaluate().verdict();
             String smokeReport = smokeTests.run();
 
             long minutes = Duration.between(start, Instant.now()).toMinutes();
             String stats = String.valueOf(maintenance.stats());
             log.info("Batch nocturne terminé en {} min — stats : {}", minutes, stats);
             notifier.info("Batch nocturne terminé en " + minutes + " min",
-                    "Stats : " + stats + "\nSmoke test :\n" + smokeReport);
+                    "Stats : " + stats + "\nÉval graphe : " + graphVerdict
+                            + "\nSmoke test :\n" + smokeReport);
         } catch (Exception e) {
             log.error("ALERTE batch nocturne : échec en cours de batch (upsert only, "
                     + "l'index déjà servi reste intact)", e);
