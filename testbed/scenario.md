@@ -14,8 +14,10 @@ Ce document est le contrat du testbed : ce que l'index **doit** contenir, ce qu'
 | `project:fakefront -CALLS_API-> project:fakebilling` | `billing.service.ts` (`HttpClient` + `environment.billingUrl`) | extracteur TypeScript |
 | `mr:... -MODIFIES-> ...` pour chaque MR | fichiers touchés des 3 MRs | mapping MR → graphe |
 | `mr:MR-1 -REFERENCES-> issue:SAND-1` | clé Jira dans le titre de la MR-1 | regex clés Jira |
-| `page:architecture-sandbox -DOCUMENTS-> project:fakeorders` (+ fakebilling) | mentions dans la page (si Confluence branché) | extraction Confluence |
-| `issue:SAND-* -> project:...` | issues Jira (si Jira branché) | extraction Jira |
+| `page:* -DOCUMENTS-> project:*` | les 5 pages du space SAND mentionnent les projets (fiches 02/03, architecture 01, runbook 04, post-mortem 05) | extraction Confluence + alias |
+| `page:* -REFERENCES-> issue:SAND-*` | SAND-1 (pages 01, 02), SAND-2 (pages 03, 04, 05), SAND-3 (page 03) | regex clés Jira dans les pages |
+| `page:01 -LINKS_TO-> page:02/03` | liens Confluence posés à la création (voir note des pages) | liens entre pages |
+| `issue:SAND-* -> project:...` + `SAND-1 -LINKS_TO- SAND-2/SAND-4` | issues et liens créés par `setup-jira.sh` | extraction Jira |
 
 Vérification SQL directe (les tables sont celles des changelogs Liquibase) :
 
@@ -42,7 +44,7 @@ Et via l'éval : `curl -s localhost:8080/api/admin/graph-quality` — verdict at
 | Topic Kafka dynamique (`"audit-" + region`) | `AuditTrailRouter.java` | **aucune** arête `PUBLISHES` vers `topic:audit-*` — limite connue de l'extraction déterministe |
 | Appel HTTP via `WebClient` (pas Feign) | `LegacyOrdersWebClient.java` | **aucune** arête `CALLS_API` supplémentaire depuis fake-billing |
 | MR sans clé Jira | MR-2 « Refonte du calcul de TVA » | arêtes `MODIFIES` présentes, **aucune** `REFERENCES` |
-| Alias mal orthographié « Fake Ordres » | `confluence/runbook-facturation.md` | mention **non résolue** tant que l'alias n'est pas déclaré ; ajoutez ensuite `"Fake Ordres"` aux alias de `fakeorders`, re-synchronisez, et vérifiez que l'arête `DOCUMENTS` apparaît — c'est le test de la table d'alias |
+| Alias mal orthographié « Fake Ordres » | `confluence/04-runbook-facturation.md` | mention **non résolue** tant que l'alias n'est pas déclaré ; ajoutez ensuite `"Fake Ordres"` aux alias de `fakeorders`, re-synchronisez, et vérifiez que l'arête `DOCUMENTS` apparaît — c'est le test de la table d'alias |
 
 Si un de ces pièges produit quand même une arête : faux positif d'extraction (bug).
 Si vous voulez que ces cas soient couverts un jour : c'est le périmètre du chantier
@@ -59,6 +61,7 @@ maintenant la mesure factuelle.
 | Q4 | « Qui publie sur le topic orders ? » | fake-orders | `OrderEventPublisher.java` | graphe |
 | Q5 | « Explique-moi le projet fake-billing en 3 principes » | consomme les commandes, facture, expose les factures au front | fiche projet | fiche pré-calculée |
 | Q6 | « Avons-nous une issue sur le calcul de TVA ? » | SAND-2 (si Jira branché) | issue SAND-2 | RAG |
+| Q7 | « Avons-nous eu un incident de facturation ? » | oui — TVA à 19,6 % au lieu de 20 % sur les commandes remisées, en mars ; refonte suivie par SAND-2 | page « Post-mortem incident TVA » | RAG trans-sources |
 
 Critère transverse : chaque réponse **cite ses sources** (fichier/MR/page). Une
 réponse juste sans source = échec du critère du cadrage.
