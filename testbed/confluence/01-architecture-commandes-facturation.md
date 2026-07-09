@@ -1,6 +1,6 @@
 # Architecture commandes-facturation
 
-> Page à créer dans le space `XRAGSAND` (titre identique au H1). Ajoutez des liens
+> Page à créer sous la page parente « XRAG-SANDBOX » (space de votre choix) (titre identique au H1). Ajoutez des liens
 > Confluence vers les pages « Fake Orders » et « Fake Billing » sur leurs
 > mentions : ce sont eux qui produisent les arêtes LINKS_TO entre pages.
 

@@ -14,7 +14,7 @@ Ce document est le contrat du testbed : ce que l'index **doit** contenir, ce qu'
 | `project:fakefront -CALLS_API-> project:fakebilling` | `billing.service.ts` (`HttpClient` + `environment.billingUrl`) | extracteur TypeScript |
 | `mr:... -MODIFIES-> ...` pour chaque MR | fichiers touchés des 3 MRs | mapping MR → graphe |
 | `mr:MR-1 -REFERENCES-> issue:XRAGSAND-1` | clé Jira dans le titre de la MR-1 | regex clés Jira |
-| `page:* -DOCUMENTS-> project:*` | les 5 pages du space XRAGSAND mentionnent les projets (fiches 02/03, architecture 01, runbook 04, post-mortem 05) | extraction Confluence + alias |
+| `page:* -DOCUMENTS-> project:*` | les 5 pages sous la page parente « XRAG-SANDBOX » mentionnent les projets (fiches 02/03, architecture 01, runbook 04, post-mortem 05) | extraction Confluence + alias |
 | `page:* -REFERENCES-> issue:XRAGSAND-*` | XRAGSAND-1 (pages 01, 02), XRAGSAND-2 (pages 03, 04, 05), XRAGSAND-3 (page 03) | regex clés Jira dans les pages |
 | `page:01 -LINKS_TO-> page:02/03` | liens Confluence posés à la création (voir note des pages) | liens entre pages |
 | `issue:XRAGSAND-* -> project:...` + `XRAGSAND-1 -LINKS_TO- XRAGSAND-2/XRAGSAND-4` | issues et liens créés par `setup-jira.sh` | extraction Jira |

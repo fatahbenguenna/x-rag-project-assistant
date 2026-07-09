@@ -1,6 +1,6 @@
 # Post-mortem — incident TVA de mars
 
-> Page à créer dans le space `XRAGSAND`. Permet de tester les questions type
+> Page à créer sous la page parente « XRAG-SANDBOX » (space de votre choix). Permet de tester les questions type
 > « avons-nous eu un bug sur X ? » avec une réponse connue.
 
 ## Résumé

@@ -1,6 +1,6 @@
 # Fake Orders — fiche projet
 
-> Page à créer dans le space `XRAGSAND`. Sert de source documentaire pour les
+> Page à créer sous la page parente « XRAG-SANDBOX » (space de votre choix). Sert de source documentaire pour les
 > questions descriptives (Q5-like) et produit `page -DOCUMENTS-> project:fakeorders`.
 
 **Fake Orders** (aussi appelé `FAKEORDERS` dans les anciens documents) est le

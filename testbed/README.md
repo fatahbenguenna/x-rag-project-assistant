@@ -16,13 +16,13 @@ sur volumétrie réelle).
 | `projects/fake-orders` | Java — publie Kafka `orders`, entité `@Table("orders")` |
 | `projects/fake-billing` | Java — consomme `orders`, `@FeignClient` vers fake-orders, lit la table `orders` |
 | `projects/fake-front` | TypeScript — `HttpClient` vers `environment.billingUrl` |
-| `confluence/` | 5 pages du space factice `XRAGSAND` (fiches projets, runbook, post-mortem) |
+| `confluence/` | 5 pages sous la page parente « XRAG-SANDBOX » d'un space existant |
 | `jira/` | 4 issues du projet factice `XRAGSAND` (liées aux MRs et aux pages) |
 | `increments/` | Fichiers des étapes incrémentales (voir `scenario.md`) |
 | `scenario.md` | **Vérité terrain** : graphe attendu, pièges, questions canoniques, déroulé |
 | `team-config.testbed.yml` | Config d'instance pointant sur le groupe sandbox |
 | `setup-gitlab.sh` | Groupe + 3 projets + 3 MRs GitLab, étapes `increment`/`prune` |
-| `setup-confluence.sh` | Création des pages dans le space `XRAGSAND` (requiert pandoc) |
+| `setup-confluence.sh` | Page parente « XRAG-SANDBOX » + les 5 pages (requiert pandoc) |
 | `setup-jira.sh` | Création des issues `XRAGSAND-1..4` + liens entre issues |
 
 Chaque source contient des **pièges volontaires** (topic Kafka dynamique, appel
@@ -39,14 +39,21 @@ Tout le sandbox s'identifie d'un coup d'œil sous le nom **XRAG-SANDBOX**
 | Où | Nom d'affichage | Clé / chemin technique |
 |---|---|---|
 | GitLab | XRAG-SANDBOX | sous-groupe `x-rag-sandbox` |
-| Confluence | XRAG-SANDBOX | space **`XRAGSAND`** |
+| Confluence | XRAG-SANDBOX | **page parente** « XRAG-SANDBOX » dans un space existant où vous pouvez écrire |
 | Jira | XRAG-SANDBOX | projet **`XRAGSAND`** (issues `XRAGSAND-1..4`) |
 
-Pourquoi la clé n'est pas littéralement `XRAG-SANDBOX` : les clés de space
-Confluence et de projet Jira **n'acceptent pas les tirets** (alphanumérique
-uniquement), et Jira limite la clé à 10 caractères par défaut — `XRAGSAND`
-respecte les deux contraintes. À la création du space et du projet, mettez
-« XRAG-SANDBOX » comme **nom** et `XRAGSAND` comme **clé**.
+Pourquoi la clé Jira n'est pas littéralement `XRAG-SANDBOX` : les clés de projet
+Jira **n'acceptent pas les tirets** et sont limitées à 10 caractères par défaut —
+`XRAGSAND` respecte les deux. À la création du projet, mettez « XRAG-SANDBOX »
+comme **nom** et `XRAGSAND` comme **clé**.
+
+Côté Confluence, **aucun space dédié n'est requis** (leur création est souvent
+réservée aux admins) : les pages vivent sous une page parente « XRAG-SANDBOX »
+dans un space où vous avez déjà les droits. ⚠️ L'indexation Confluence du RAG se
+fait **par space entier** (`sources.confluence.spaces`) : préférez un space
+isolé — typiquement votre **space personnel** (clé `~login`, créable sans
+admin) — sinon le contenu réel du space partagé polluera la vérité terrain du
+scénario (verdict graph-quality, réponses aux questions canoniques).
 
 ## Tokens et permissions
 
@@ -75,8 +82,9 @@ garde des tokens de lecture.
 
 - **Data Center/Server** : PAT (profil → *Personal Access Tokens*), envoyé en
   `Bearer`. Les PAT DC n'ont pas de scopes : ils héritent des droits du compte —
-  le compte doit avoir la permission **« Ajouter des pages »** sur le space
-  `XRAGSAND` (le space doit exister ; sa création est souvent réservée aux admins).
+  il suffit d'avoir la permission **« Ajouter des pages »** sur le space visé
+  (`CONFLUENCE_SPACE`). Aucun droit admin : pas de space à créer, le script pose
+  une page parente « XRAG-SANDBOX » et les 5 pages dessous.
 - **Cloud** : API token + email → définir `CONFLUENCE_USER`, le script bascule
   en Basic auth.
 - Côté instance : un compte avec **lecture** du space suffit.
@@ -101,9 +109,10 @@ export GITLAB_TOKEN=glpat-...          # scope api, Owner/Maintainer du parent
 export GITLAB_PARENT_GROUP=passerelle  # le sous-groupe x-rag-sandbox sera créé dessous
 ./testbed/setup-gitlab.sh init
 
-# 2. Confluence : pages du space XRAGSAND — nom « XRAG-SANDBOX » (créé au préalable)
+# 2. Confluence : page parente « XRAG-SANDBOX » + 5 pages dans un space existant
 export CONFLUENCE_BASE_URL=https://confluence.example.com
 export CONFLUENCE_TOKEN=...            # PAT DC (ou API token + CONFLUENCE_USER en Cloud)
+export CONFLUENCE_SPACE='~votre-login' # space isolé recommandé (l'indexation est par space)
 ./testbed/setup-confluence.sh
 
 # 3. Jira : issues XRAGSAND-1..4 — projet « XRAG-SANDBOX », clé XRAGSAND, vierge

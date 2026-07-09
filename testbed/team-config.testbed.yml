@@ -11,8 +11,11 @@ llm:
 
 sources:
   confluence:
-    base-url: https://confluence.example.com   # space factice — voir testbed/confluence/
-    spaces: [XRAGSAND]
+    base-url: https://confluence.example.com
+    # L'indexation se fait PAR SPACE ENTIER : utilisez un space isolé où vous
+    # pouvez écrire (recommandé : votre space personnel "~login"). Les pages du
+    # testbed y sont créées sous la page parente « XRAG-SANDBOX ».
+    spaces: ["~votre-login"]
   gitlab:
     base-url: https://gitlab.example.com
     group: passerelle/x-rag-sandbox             # créé par setup-gitlab.sh init

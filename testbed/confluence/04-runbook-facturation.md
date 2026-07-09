@@ -1,6 +1,6 @@
 # Runbook facturation
 
-> Page à créer dans le space `XRAGSAND`. Contient le PIÈGE d'alias du scénario (§2).
+> Page à créer sous la page parente « XRAG-SANDBOX » (space de votre choix). Contient le PIÈGE d'alias du scénario (§2).
 
 En cas d'écart de facturation :
 

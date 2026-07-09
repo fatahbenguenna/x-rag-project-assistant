@@ -1,6 +1,6 @@
 # Fake Billing — fiche projet
 
-> Page à créer dans le space `XRAGSAND`. Produit `page -DOCUMENTS-> project:fakebilling`
+> Page à créer sous la page parente « XRAG-SANDBOX » (space de votre choix). Produit `page -DOCUMENTS-> project:fakebilling`
 > et `REFERENCES` vers XRAGSAND-2 / XRAGSAND-3.
 
 **Fake Billing** émet et expose les factures du domaine.
