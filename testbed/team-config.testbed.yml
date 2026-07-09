@@ -12,14 +12,14 @@ llm:
 sources:
   confluence:
     base-url: https://confluence.example.com   # space factice — voir testbed/confluence/
-    spaces: [SAND]
+    spaces: [XRAGSAND]
   gitlab:
     base-url: https://gitlab.example.com
     group: passerelle/xrag-sandbox             # créé par setup-gitlab.sh init
     branches: [main]
   jira:
     base-url: https://jira.example.com         # projet factice — voir testbed/jira/
-    projects: [SAND]
+    projects: [XRAGSAND]
 
 # La table d'alias est un objet de test à part entière (voir scenario.md §2 :
 # « Fake Ordres » est volontairement ABSENT au départ).

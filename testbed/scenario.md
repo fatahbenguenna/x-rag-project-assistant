@@ -13,11 +13,11 @@ Ce document est le contrat du testbed : ce que l'index **doit** contenir, ce qu'
 | `project:fakeorders -SHARES_TABLE- project:fakebilling` | `Order.java` et `OrderReadModel.java` (`@Table(name = "orders")`) | table partagée |
 | `project:fakefront -CALLS_API-> project:fakebilling` | `billing.service.ts` (`HttpClient` + `environment.billingUrl`) | extracteur TypeScript |
 | `mr:... -MODIFIES-> ...` pour chaque MR | fichiers touchés des 3 MRs | mapping MR → graphe |
-| `mr:MR-1 -REFERENCES-> issue:SAND-1` | clé Jira dans le titre de la MR-1 | regex clés Jira |
-| `page:* -DOCUMENTS-> project:*` | les 5 pages du space SAND mentionnent les projets (fiches 02/03, architecture 01, runbook 04, post-mortem 05) | extraction Confluence + alias |
-| `page:* -REFERENCES-> issue:SAND-*` | SAND-1 (pages 01, 02), SAND-2 (pages 03, 04, 05), SAND-3 (page 03) | regex clés Jira dans les pages |
+| `mr:MR-1 -REFERENCES-> issue:XRAGSAND-1` | clé Jira dans le titre de la MR-1 | regex clés Jira |
+| `page:* -DOCUMENTS-> project:*` | les 5 pages du space XRAGSAND mentionnent les projets (fiches 02/03, architecture 01, runbook 04, post-mortem 05) | extraction Confluence + alias |
+| `page:* -REFERENCES-> issue:XRAGSAND-*` | XRAGSAND-1 (pages 01, 02), XRAGSAND-2 (pages 03, 04, 05), XRAGSAND-3 (page 03) | regex clés Jira dans les pages |
 | `page:01 -LINKS_TO-> page:02/03` | liens Confluence posés à la création (voir note des pages) | liens entre pages |
-| `issue:SAND-* -> project:...` + `SAND-1 -LINKS_TO- SAND-2/SAND-4` | issues et liens créés par `setup-jira.sh` | extraction Jira |
+| `issue:XRAGSAND-* -> project:...` + `XRAGSAND-1 -LINKS_TO- XRAGSAND-2/XRAGSAND-4` | issues et liens créés par `setup-jira.sh` | extraction Jira |
 
 Vérification SQL directe (les tables sont celles des changelogs Liquibase) :
 
@@ -56,12 +56,12 @@ maintenant la mesure factuelle.
 | # | Question | Réponse attendue | Sources attendues | Voie |
 |---|---|---|---|---|
 | Q1 | « Comment communiquent fake-orders et fake-billing ? » | 3 canaux : topic Kafka `orders`, appel API Feign billing→orders, table `orders` partagée | `OrderEventPublisher.java`, `OrdersListener.java`, `OrdersClient.java` | graphe + RAG |
-| Q2 | « Quelle MR ouverte est la plus vieille ? » | MR-1 « SAND-1 Suivi de commande » (fake-orders) | métadonnées MR | tools SQL |
+| Q2 | « Quelle MR ouverte est la plus vieille ? » | MR-1 « XRAGSAND-1 Suivi de commande » (fake-orders) | métadonnées MR | tools SQL |
 | Q3 | « Combien de MRs sont ouvertes ? » | 2 (MR-1 et MR-2) | métadonnées MR | tools SQL |
 | Q4 | « Qui publie sur le topic orders ? » | fake-orders | `OrderEventPublisher.java` | graphe |
 | Q5 | « Explique-moi le projet fake-billing en 3 principes » | consomme les commandes, facture, expose les factures au front | fiche projet | fiche pré-calculée |
-| Q6 | « Avons-nous une issue sur le calcul de TVA ? » | SAND-2 (si Jira branché) | issue SAND-2 | RAG |
-| Q7 | « Avons-nous eu un incident de facturation ? » | oui — TVA à 19,6 % au lieu de 20 % sur les commandes remisées, en mars ; refonte suivie par SAND-2 | page « Post-mortem incident TVA » | RAG trans-sources |
+| Q6 | « Avons-nous une issue sur le calcul de TVA ? » | XRAGSAND-2 (si Jira branché) | issue XRAGSAND-2 | RAG |
+| Q7 | « Avons-nous eu un incident de facturation ? » | oui — TVA à 19,6 % au lieu de 20 % sur les commandes remisées, en mars ; refonte suivie par XRAGSAND-2 | page « Post-mortem incident TVA » | RAG trans-sources |
 
 Critère transverse : chaque réponse **cite ses sources** (fichier/MR/page). Une
 réponse juste sans source = échec du critère du cadrage.

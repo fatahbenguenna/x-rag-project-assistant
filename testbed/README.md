@@ -16,20 +16,37 @@ sur volumétrie réelle).
 | `projects/fake-orders` | Java — publie Kafka `orders`, entité `@Table("orders")` |
 | `projects/fake-billing` | Java — consomme `orders`, `@FeignClient` vers fake-orders, lit la table `orders` |
 | `projects/fake-front` | TypeScript — `HttpClient` vers `environment.billingUrl` |
-| `confluence/` | 5 pages du space factice `SAND` (fiches projets, runbook, post-mortem) |
-| `jira/` | 4 issues du projet factice `SAND` (liées aux MRs et aux pages) |
+| `confluence/` | 5 pages du space factice `XRAGSAND` (fiches projets, runbook, post-mortem) |
+| `jira/` | 4 issues du projet factice `XRAGSAND` (liées aux MRs et aux pages) |
 | `increments/` | Fichiers des étapes incrémentales (voir `scenario.md`) |
 | `scenario.md` | **Vérité terrain** : graphe attendu, pièges, questions canoniques, déroulé |
 | `team-config.testbed.yml` | Config d'instance pointant sur le groupe sandbox |
 | `setup-gitlab.sh` | Groupe + 3 projets + 3 MRs GitLab, étapes `increment`/`prune` |
-| `setup-confluence.sh` | Création des pages dans le space `SAND` (requiert pandoc) |
-| `setup-jira.sh` | Création des issues `SAND-1..4` + liens entre issues |
+| `setup-confluence.sh` | Création des pages dans le space `XRAGSAND` (requiert pandoc) |
+| `setup-jira.sh` | Création des issues `XRAGSAND-1..4` + liens entre issues |
 
 Chaque source contient des **pièges volontaires** (topic Kafka dynamique, appel
 `WebClient` hors Feign, MR sans clé Jira, alias mal orthographié « Fake Ordres ») :
 le scénario documente ce que l'extraction déterministe **ne doit pas** produire —
 c'est la mesure factuelle de ses limites, celle qui alimente la décision
 « extraction LLM / extracteur AST » (décision d'architecture n°10).
+
+## Nommage du bac à sable
+
+Tout le sandbox s'identifie d'un coup d'œil sous le nom **XRAG-SANDBOX**
+(x pour expérimental) :
+
+| Où | Nom d'affichage | Clé / chemin technique |
+|---|---|---|
+| GitLab | XRAG-SANDBOX | sous-groupe `xrag-sandbox` |
+| Confluence | XRAG-SANDBOX | space **`XRAGSAND`** |
+| Jira | XRAG-SANDBOX | projet **`XRAGSAND`** (issues `XRAGSAND-1..4`) |
+
+Pourquoi la clé n'est pas littéralement `XRAG-SANDBOX` : les clés de space
+Confluence et de projet Jira **n'acceptent pas les tirets** (alphanumérique
+uniquement), et Jira limite la clé à 10 caractères par défaut — `XRAGSAND`
+respecte les deux contraintes. À la création du space et du projet, mettez
+« XRAG-SANDBOX » comme **nom** et `XRAGSAND` comme **clé**.
 
 ## Tokens et permissions
 
@@ -59,7 +76,7 @@ garde des tokens de lecture.
 - **Data Center/Server** : PAT (profil → *Personal Access Tokens*), envoyé en
   `Bearer`. Les PAT DC n'ont pas de scopes : ils héritent des droits du compte —
   le compte doit avoir la permission **« Ajouter des pages »** sur le space
-  `SAND` (le space doit exister ; sa création est souvent réservée aux admins).
+  `XRAGSAND` (le space doit exister ; sa création est souvent réservée aux admins).
 - **Cloud** : API token + email → définir `CONFLUENCE_USER`, le script bascule
   en Basic auth.
 - Côté instance : un compte avec **lecture** du space suffit.
@@ -67,12 +84,12 @@ garde des tokens de lecture.
 ### Jira (`setup-jira.sh`)
 
 - **Data Center/Server** : PAT en `Bearer`. Le compte doit avoir, sur le projet
-  `SAND` : **Create Issues** et **Link Issues** (et *Transition Issues* pour
-  passer SAND-1/2 « En cours » et SAND-3 « Terminée » — étape manuelle, les
+  `XRAGSAND` : **Create Issues** et **Link Issues** (et *Transition Issues* pour
+  passer XRAGSAND-1/2 « En cours » et XRAGSAND-3 « Terminée » — étape manuelle, les
   workflows varient selon l'instance).
 - **Cloud** : API token + email → définir `JIRA_USER` (Basic auth).
-- Le projet `SAND` doit exister et être **vierge** (la numérotation doit
-  commencer à SAND-1 : les MRs et pages référencent ces clés littéralement).
+- Le projet `XRAGSAND` doit exister et être **vierge** (la numérotation doit
+  commencer à XRAGSAND-1 : les MRs et pages référencent ces clés littéralement).
 - Côté instance : **Browse Projects** en lecture suffit.
 
 ## Démarrage rapide
@@ -84,12 +101,12 @@ export GITLAB_TOKEN=glpat-...          # scope api, Owner/Maintainer du parent
 export GITLAB_PARENT_GROUP=passerelle  # le sous-groupe xrag-sandbox sera créé dessous
 ./testbed/setup-gitlab.sh init
 
-# 2. Confluence : pages du space SAND (space créé au préalable)
+# 2. Confluence : pages du space XRAGSAND — nom « XRAG-SANDBOX » (créé au préalable)
 export CONFLUENCE_BASE_URL=https://confluence.example.com
 export CONFLUENCE_TOKEN=...            # PAT DC (ou API token + CONFLUENCE_USER en Cloud)
 ./testbed/setup-confluence.sh
 
-# 3. Jira : issues SAND-1..4 (projet vierge créé au préalable)
+# 3. Jira : issues XRAGSAND-1..4 — projet « XRAG-SANDBOX », clé XRAGSAND, vierge
 export JIRA_BASE_URL=https://jira.example.com
 export JIRA_TOKEN=...                  # PAT DC (ou API token + JIRA_USER en Cloud)
 ./testbed/setup-jira.sh

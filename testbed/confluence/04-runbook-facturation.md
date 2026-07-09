@@ -1,11 +1,11 @@
 # Runbook facturation
 
-> Page à créer dans le space `SAND`. Contient le PIÈGE d'alias du scénario (§2).
+> Page à créer dans le space `XRAGSAND`. Contient le PIÈGE d'alias du scénario (§2).
 
 En cas d'écart de facturation :
 
 1. Vérifier la consommation du topic `orders` par Fake Billing (lag consumer).
-2. Vérifier le calcul de TVA — chantier de refonte en cours, voir SAND-2.
+2. Vérifier le calcul de TVA — chantier de refonte en cours, voir XRAGSAND-2.
 3. En dernier recours, comparer avec la table `orders` (modèle de lecture).
 
 Historiquement, les commandes étaient récupérées par le client legacy de

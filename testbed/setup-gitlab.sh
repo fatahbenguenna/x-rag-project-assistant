@@ -83,15 +83,15 @@ case "${1:-}" in
 
     echo "MRs (l'ordre de création fixe l'ancienneté — MR-1 = la plus vieille)..."
     # MR-1 (ouverte, avec clé Jira) : réponse attendue de « la MR ouverte la plus vieille »
-    b1=feat/sand-1-suivi-commande
+    b1=feat/xragsand-1-suivi-commande
     api POST "/projects/$(project_id fake-orders)/repository/branches?branch=$b1&ref=main" > /dev/null
-    printf '// SAND-1 : suivi de commande (en cours)\n' > /tmp/track.java.tmp
+    printf '// XRAGSAND-1 : suivi de commande (en cours)\n' > /tmp/track.java.tmp
     commit_file fake-orders "src/main/java/com/sandbox/orders/OrderTracking.java" /tmp/track.java.tmp \
-      "SAND-1 ébauche du suivi de commande" "$b1"
+      "XRAGSAND-1 ébauche du suivi de commande" "$b1"
     api POST "/projects/$(project_id fake-orders)/merge_requests" \
       --header 'Content-Type: application/json' \
       --data "$(jq -n --arg s "$b1" '{source_branch:$s, target_branch:"main",
-        title:"SAND-1 Suivi de commande", description:"Implémente le suivi demandé par SAND-1."}')" | jq -r '.web_url'
+        title:"XRAGSAND-1 Suivi de commande", description:"Implémente le suivi demandé par XRAGSAND-1."}')" | jq -r '.web_url'
 
     # MR-2 (ouverte, SANS clé Jira — piège REFERENCES)
     b2=feat/refonte-tva
@@ -105,15 +105,15 @@ case "${1:-}" in
         title:"Refonte du calcul de TVA", description:"Sans référence Jira — volontaire (piège du scénario)."}')" | jq -r '.web_url'
 
     # MR-3 (mergée, avec clé Jira) : teste l'état merged dans la table MR
-    b3=feat/sand-3-export-csv
+    b3=feat/xragsand-3-export-csv
     api POST "/projects/$(project_id fake-billing)/repository/branches?branch=$b3&ref=main" > /dev/null
-    printf '// SAND-3 : export CSV des factures\n' > /tmp/csv.java.tmp
+    printf '// XRAGSAND-3 : export CSV des factures\n' > /tmp/csv.java.tmp
     commit_file fake-billing "src/main/java/com/sandbox/billing/InvoiceCsvExporter.java" /tmp/csv.java.tmp \
-      "SAND-3 export CSV des factures" "$b3"
+      "XRAGSAND-3 export CSV des factures" "$b3"
     mr3_iid=$(api POST "/projects/$(project_id fake-billing)/merge_requests" \
       --header 'Content-Type: application/json' \
       --data "$(jq -n --arg s "$b3" '{source_branch:$s, target_branch:"main",
-        title:"SAND-3 Export CSV des factures", description:"Ferme SAND-3."}')" | jq -r '.iid')
+        title:"XRAGSAND-3 Export CSV des factures", description:"Ferme XRAGSAND-3."}')" | jq -r '.iid')
     sleep 2
     api PUT "/projects/$(project_id fake-billing)/merge_requests/$mr3_iid/merge" > /dev/null
     echo "MR-3 mergée."

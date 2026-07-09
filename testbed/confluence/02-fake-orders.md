@@ -1,6 +1,6 @@
 # Fake Orders — fiche projet
 
-> Page à créer dans le space `SAND`. Sert de source documentaire pour les
+> Page à créer dans le space `XRAGSAND`. Sert de source documentaire pour les
 > questions descriptives (Q5-like) et produit `page -DOCUMENTS-> project:fakeorders`.
 
 **Fake Orders** (aussi appelé `FAKEORDERS` dans les anciens documents) est le
@@ -8,7 +8,7 @@ service référent des commandes.
 
 ## Responsabilités
 
-- Création et suivi des commandes clients (suivi enrichi en cours : SAND-1).
+- Création et suivi des commandes clients (suivi enrichi en cours : XRAGSAND-1).
 - Publication des événements de commande sur le topic Kafka `orders`
   (contrat : une clé = la référence commande, un événement par transition d'état).
 - Propriété de la table `orders` (PostgreSQL).

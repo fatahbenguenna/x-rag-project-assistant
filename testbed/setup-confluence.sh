@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Crée les pages factices du space Confluence SAND depuis testbed/confluence/*.md.
+# Crée les pages factices du space Confluence XRAGSAND depuis testbed/confluence/*.md.
 #
 # Prérequis : curl, jq, pandoc (conversion Markdown -> XHTML storage).
-# Le space (clé SAND par défaut) doit exister. Les lignes de citation « > »
+# Le space (clé XRAGSAND par défaut) doit exister. Les lignes de citation « > »
 # des fichiers (notes destinées à l'opérateur) sont exclues du contenu publié.
 #
 # Variables d'environnement :
 #   CONFLUENCE_BASE_URL  ex. https://confluence.example.com
 #   CONFLUENCE_TOKEN     PAT (Bearer, Data Center) — ou API token Cloud avec CONFLUENCE_USER
 #   CONFLUENCE_USER      (optionnel) email/login : bascule en Basic auth (Cloud)
-#   CONFLUENCE_SPACE     (optionnel) clé du space, défaut SAND
+#   CONFLUENCE_SPACE     (optionnel) clé du space, défaut XRAGSAND
 set -euo pipefail
 
 : "${CONFLUENCE_BASE_URL:?CONFLUENCE_BASE_URL requis}"
 : "${CONFLUENCE_TOKEN:?CONFLUENCE_TOKEN requis}"
-SPACE="${CONFLUENCE_SPACE:-SAND}"
+SPACE="${CONFLUENCE_SPACE:-XRAGSAND}"
 command -v jq >/dev/null || { echo "jq requis" >&2; exit 1; }
 command -v pandoc >/dev/null || { echo "pandoc requis (conversion Markdown -> storage). À défaut, coller les pages à la main." >&2; exit 1; }
 
