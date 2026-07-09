@@ -126,3 +126,11 @@ Prompt système : réponses concises, max ~200 mots pour le descriptif, toujours
 ## Effort estimé
 
 Socle RAG + GraphRAG : ~2 semaines. Exportabilité (config, plugins, packaging, doc) : +3-4 jours. Chaque phase utilisable seule, incrémental.
+
+## Méthode BMAD (installée)
+
+- BMAD Method v6 (module `bmm`) est installé : runtime dans `_bmad/`, skills Claude Code dans `.claude/skills/` (invoquer `bmad-help` pour démarrer). Mise à jour via `npx bmad-method install` (action update).
+- Config : `_bmad/core/config.yaml` et `_bmad/bmm/config.yaml` — communication et documents en **français**.
+- Usage **brownfield** uniquement : les artefacts BMAD (PRD, architecture, epics, stories) concernent les évolutions futures, pas la re-spécification des PRs déjà mergées.
+- Les décisions de ce CLAUDE.md restent la référence : les agents BMAD (Analyst, PM, Architect, Dev...) ne doivent pas remettre en cause la section « Décisions d'architecture ».
+- Emplacements : artefacts de planification dans `_bmad-output/planning-artifacts/`, artefacts d'implémentation dans `_bmad-output/implementation-artifacts/`, connaissance long-terme dans `docs/` (voir `docs/README.md`).
