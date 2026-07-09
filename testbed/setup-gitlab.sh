@@ -5,7 +5,7 @@
 #   GITLAB_BASE_URL      ex. https://gitlab.example.com
 #   GITLAB_TOKEN         PAT scope api
 #   GITLAB_PARENT_GROUP  chemin du groupe parent (ex. passerelle) — le sous-groupe
-#                        xrag-sandbox est créé dessous
+#                        x-rag-sandbox est créé dessous
 #
 # Usage : ./setup-gitlab.sh init | increment | prune
 set -euo pipefail
@@ -17,7 +17,7 @@ command -v jq >/dev/null || { echo "jq requis" >&2; exit 1; }
 
 API="$GITLAB_BASE_URL/api/v4"
 AUTH=(--header "PRIVATE-TOKEN: $GITLAB_TOKEN")
-SANDBOX_PATH="$GITLAB_PARENT_GROUP/xrag-sandbox"
+SANDBOX_PATH="$GITLAB_PARENT_GROUP/x-rag-sandbox"
 TESTBED_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECTS=(fake-orders fake-billing fake-front)
 
@@ -70,7 +70,7 @@ case "${1:-}" in
   init)
     parent_id=$(group_id "$GITLAB_PARENT_GROUP")
     echo "Création du sous-groupe $SANDBOX_PATH..."
-    api POST "/groups" --data "name=xrag-sandbox&path=xrag-sandbox&parent_id=$parent_id" > /dev/null \
+    api POST "/groups" --data "name=XRAG-SANDBOX&path=x-rag-sandbox&parent_id=$parent_id" > /dev/null \
       || echo "(sous-groupe déjà existant, on continue)"
     sandbox_id=$(group_id "$SANDBOX_PATH")
 

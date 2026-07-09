@@ -15,7 +15,7 @@ sources:
     spaces: [XRAGSAND]
   gitlab:
     base-url: https://gitlab.example.com
-    group: passerelle/xrag-sandbox             # créé par setup-gitlab.sh init
+    group: passerelle/x-rag-sandbox             # créé par setup-gitlab.sh init
     branches: [main]
   jira:
     base-url: https://jira.example.com         # projet factice — voir testbed/jira/

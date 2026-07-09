@@ -38,7 +38,7 @@ Tout le sandbox s'identifie d'un coup d'œil sous le nom **XRAG-SANDBOX**
 
 | Où | Nom d'affichage | Clé / chemin technique |
 |---|---|---|
-| GitLab | XRAG-SANDBOX | sous-groupe `xrag-sandbox` |
+| GitLab | XRAG-SANDBOX | sous-groupe `x-rag-sandbox` |
 | Confluence | XRAG-SANDBOX | space **`XRAGSAND`** |
 | Jira | XRAG-SANDBOX | projet **`XRAGSAND`** (issues `XRAGSAND-1..4`) |
 
@@ -98,7 +98,7 @@ garde des tokens de lecture.
 # 1. GitLab : sous-groupe + 3 projets + 3 MRs
 export GITLAB_BASE_URL=https://gitlab.example.com
 export GITLAB_TOKEN=glpat-...          # scope api, Owner/Maintainer du parent
-export GITLAB_PARENT_GROUP=passerelle  # le sous-groupe xrag-sandbox sera créé dessous
+export GITLAB_PARENT_GROUP=passerelle  # le sous-groupe x-rag-sandbox sera créé dessous
 ./testbed/setup-gitlab.sh init
 
 # 2. Confluence : pages du space XRAGSAND — nom « XRAG-SANDBOX » (créé au préalable)
