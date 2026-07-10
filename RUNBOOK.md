@@ -173,6 +173,15 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 
 ## 10. Mise à jour de l'instance — 🐧
 
+L'image Docker est une photo du code au moment du build : modifier le code sur le disque
+ne change rien au conteneur qui tourne. Selon ce qui a changé :
+
+| Changement | Commande (seul `rag-api` est touché ; données et modèles préservés) |
+|---|---|
+| **Code** (`git pull`) | `docker compose build rag-api && docker compose up -d rag-api` |
+| **`.env`** (cookies, tokens) | `docker compose up -d rag-api` (recréation — pas de rebuild) |
+| **`team-config.yml`** | `docker compose restart rag-api` (monté en volume, relu au démarrage) |
+
 ```bash
 # En développement (build local) :
 git pull && docker compose build rag-api && docker compose up -d
