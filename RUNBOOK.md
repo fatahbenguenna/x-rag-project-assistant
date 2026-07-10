@@ -50,12 +50,24 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 ## 4. Démarrer la pile — 🐧
 
 ```bash
-docker compose up -d                       # ajouter --profile ui pour Open WebUI
+docker compose up -d                       # pile de base : postgres, ollama, rag-api
+# OU, pour inclure l'interface de chat Open WebUI (recommandé pour les humains) :
+docker compose --profile ui up -d          # le drapeau se place avant « up »
+
 docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
 docker exec xrag-ollama ollama pull qwen2.5:3b
 docker exec xrag-ollama ollama pull bge-m3
 docker compose ps                          # tout doit être Up (postgres healthy)
 ```
+
+> **Open WebUI est optionnel** : le RAG fonctionne entièrement par l'API (`:8080`). L'UI
+> (`http://localhost:3000`) est l'interface type ChatGPT pour les utilisateurs humains,
+> branchée sur l'endpoint `/v1`. On peut l'ajouter à tout moment en relançant la commande
+> avec `--profile ui` — les autres conteneurs ne sont pas touchés.
+
+> **Cookies par source** : `CONFLUENCE_COOKIE` reçoit les cookies du domaine Confluence,
+> `JIRA_COOKIE` ceux du domaine Jira — chaque serveur a son propre `JSESSIONID`, ne pas
+> les mélanger. Copier la totalité des cookies du domaine : un de trop ne gêne jamais.
 
 ## 5. Préflight — 🐧
 
