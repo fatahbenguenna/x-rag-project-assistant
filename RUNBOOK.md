@@ -47,6 +47,32 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 > rafraîchissement). Cible pérenne : compte de service → mode basic (`*_USER` + `*_TOKEN`),
 > sans autre changement. Ne jamais coller ces valeurs ailleurs que dans le `.env`.
 
+### Garanties lecture seule (cookies personnels avec droits d'écriture)
+
+L'application **ne peut pas** altérer les données de Confluence, Jira ou GitLab, même avec
+des credentials qui auraient tous les droits :
+
+1. **Audit du code** : les trois connecteurs n'émettent que des requêtes **GET**
+   (recherche CQL, JQL, arborescences et fichiers git). Le seul POST sortant de
+   l'application est la notification (`NOTIFY_WEBHOOK_URL`), envoyée **sans** les
+   credentials des plateformes. Les tools exposés au LLM (`listMergeRequests`,
+   `countMergeRequests`) lisent la base locale — le LLM n'a aucun outil vers les
+   plateformes.
+2. **Garde-fou structurel** (`ReadOnlyHttpGuard`) : un intercepteur HTTP câblé dans les
+   trois connecteurs **rejette toute requête non GET/HEAD avant qu'elle ne parte sur le
+   réseau**. Même un bug ou une régression future ne peut pas produire d'écriture avec
+   vos credentials.
+3. **Durcissements recommandés** :
+   - `chmod 600 .env` (lisible par vous seul) ;
+   - ne **pas** inclure `atlassian.xsrf.token` dans `JIRA_COOKIE` : inutile en lecture,
+     c'est le jeton qui faciliterait des écritures « type navigateur » si les cookies
+     fuitaient ;
+   - GitLab : un PAT aux scopes `read_api` + `read_repository` est incapable d'écrire
+     **par construction** (contrôle côté serveur) ;
+   - les seuls scripts du dépôt qui écrivent sur les plateformes sont ceux du testbed
+     (`testbed/setup-*.sh`) : exécution manuelle uniquement, jamais appelés par
+     l'application — ne les lancez jamais avec un groupe/space/projet réel en paramètre.
+
 ## 4. Démarrer la pile — 🐧
 
 ```bash

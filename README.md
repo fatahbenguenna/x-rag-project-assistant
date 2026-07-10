@@ -113,6 +113,11 @@ Trois modes, résolus depuis `.env` par ordre de priorité (voir `.env.example`)
 Si l'instance est servie sous un context path (`https://host/confluence`), l'inclure
 dans le `base-url` du `team-config.yml`. GitLab reste en PAT (`GITLAB_TOKEN`).
 
+**Lecture seule garantie** : les connecteurs n'émettent que des GET, et un garde-fou
+structurel (`ReadOnlyHttpGuard`) rejette toute requête d'écriture avant envoi — même des
+credentials personnels avec droits d'écriture ne peuvent pas altérer les plateformes
+(détails : RUNBOOK.md, « Garanties lecture seule »).
+
 ## CI et images versionnées
 
 - Chaque PR et chaque push sur `main` exécutent `mvn verify` (workflow `ci`).

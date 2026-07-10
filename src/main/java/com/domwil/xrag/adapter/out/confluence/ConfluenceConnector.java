@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.out.confluence;
 
+import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
 import com.domwil.xrag.adapter.out.SourceAuth;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
@@ -34,6 +35,7 @@ public class ConfluenceConnector implements SourceConnector {
         this(config, RestClient.builder()
                 .baseUrl(config.baseUrl())
                 .defaultHeader(auth.headerName(), auth.headerValue())
+                .requestInterceptor(new ReadOnlyHttpGuard())
                 .build());
     }
 

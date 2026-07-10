@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.out.jira;
 
+import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
 import com.domwil.xrag.adapter.out.SourceAuth;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
@@ -33,6 +34,7 @@ public class JiraConnector implements SourceConnector {
         this(config, RestClient.builder()
                 .baseUrl(config.baseUrl())
                 .defaultHeader(auth.headerName(), auth.headerValue())
+                .requestInterceptor(new ReadOnlyHttpGuard())
                 .build());
     }
 
