@@ -83,6 +83,11 @@ docker exec xrag-ollama ollama pull bge-m3
 
 Notes WSL :
 
+- **Ollama : rien à installer** — ni sous Windows ni sous WSL : le compose embarque son
+  propre Ollama en conteneur (`xrag-ollama`), avec ses modèles dans un volume Docker.
+  Si l'application Ollama **Windows** tourne déjà, quittez-la pendant l'utilisation de la
+  pile : elle occupe le port 11434 côté Windows (confusion possible en déboguant depuis
+  le navigateur) et consommerait de la RAM en double si un modèle y est chargé.
 - **RAM** : WSL2 se limite par défaut à ~50 % de la RAM. Pour l'inférence CPU du 7B,
   allouer au moins 20 Go dans `C:\Users\<vous>\.wslconfig` (`[wsl2]` puis `memory=20GB`),
   puis `wsl --shutdown` pour appliquer.
