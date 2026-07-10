@@ -50,18 +50,31 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 ## 4. Démarrer la pile — 🐧
 
 ```bash
-# Premier lancement : --build construit l'image rag-api localement (5-15 min, puis caché).
+# Premier lancement : les images publiques se téléchargent d'abord (~3,5 Go, dont
+# 3,3 Go pour ollama — laisser finir), puis --build construit l'image rag-api
+# localement (étape Maven : 5-15 min la première fois, quelques secondes ensuite
+# grâce au cache Docker).
 # L'avertissement « pull access denied for xrag/rag-api » est NORMAL en mode dev :
 # cette image se construit chez vous (build: .), elle n'existe sur aucun registry.
 docker compose up -d --build               # pile de base : postgres, ollama, rag-api
 # OU, pour inclure l'interface de chat Open WebUI (recommandé pour les humains) :
 docker compose --profile ui up -d --build  # le drapeau ui se place avant « up »
 
+# Attendu AVANT de continuer :
+docker compose ps
+#   xrag-postgres   Up (healthy)
+#   xrag-ollama     Up
+#   xrag-api        Up
+#   xrag-webui      Up               (seulement si --profile ui)
+
+# Puis télécharger les modèles DANS le conteneur Ollama (~6 Go au total, une seule
+# fois — persistés dans le volume ollama-models) :
 docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
 docker exec xrag-ollama ollama pull qwen2.5:3b
 docker exec xrag-ollama ollama pull bge-m3
-docker compose ps                          # tout doit être Up (postgres healthy)
 ```
+
+Enchaîner directement sur le préflight (§5) avant toute indexation.
 
 > **Open WebUI est optionnel** : le RAG fonctionne entièrement par l'API (`:8080`). L'UI
 > (`http://localhost:3000`) est l'interface type ChatGPT pour les utilisateurs humains,
