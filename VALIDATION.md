@@ -17,6 +17,8 @@ curl -s http://localhost:8080/actuator/health          # attendu : {"status":"UP
 ```
 
 - [ ] Health UP, logs Liquibase sans erreur (`docker logs xrag-api | grep -i liquibase`).
+- [ ] Préflight tout vert : `./scripts/check-connections.sh` (Postgres, Ollama + modèles,
+      GitLab, Confluence, Jira — avec les credentials réels du `.env`).
 
 ## 2. Indexation initiale
 
