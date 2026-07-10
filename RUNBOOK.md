@@ -50,9 +50,12 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 ## 4. Démarrer la pile — 🐧
 
 ```bash
-docker compose up -d                       # pile de base : postgres, ollama, rag-api
+# Premier lancement : --build construit l'image rag-api localement (5-15 min, puis caché).
+# L'avertissement « pull access denied for xrag/rag-api » est NORMAL en mode dev :
+# cette image se construit chez vous (build: .), elle n'existe sur aucun registry.
+docker compose up -d --build               # pile de base : postgres, ollama, rag-api
 # OU, pour inclure l'interface de chat Open WebUI (recommandé pour les humains) :
-docker compose --profile ui up -d          # le drapeau se place avant « up »
+docker compose --profile ui up -d --build  # le drapeau ui se place avant « up »
 
 docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
 docker exec xrag-ollama ollama pull qwen2.5:3b
