@@ -49,6 +49,9 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
 
 Mises à jour : `docker compose pull && docker compose up -d` (Liquibase migre au démarrage).
 
+> 📘 Guide opérationnel détaillé (étapes 🪟 Windows / 🐧 WSL, accès aux services,
+> exploitation courante, dépannage) : **[RUNBOOK.md](RUNBOOK.md)**.
+
 ### Windows : toute la chaîne s'exécute dans WSL (Ubuntu)
 
 Docker tourne dans WSL — travaillez depuis un terminal **WSL Ubuntu**, jamais depuis
