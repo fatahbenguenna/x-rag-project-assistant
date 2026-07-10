@@ -1,14 +1,21 @@
 # Build
 FROM maven:3.9-eclipse-temurin-21 AS build
-# Proxy d'entreprise : passer les options JVM de proxy à Maven (voir .env.example,
-# MAVEN_OPTS) — la JVM n'honore pas les variables HTTP_PROXY/HTTPS_PROXY.
+# Proxy/miroir d'entreprise :
+#  - settings.xml (miroir Nexus/Artifactory, credentials) injecté en SECRET BuildKit :
+#    disponible pendant le RUN uniquement, jamais stocké dans une couche de l'image ;
+#  - MAVEN_OPTS pour les options JVM de proxy (la JVM ignore HTTP_PROXY).
+#  Voir .env.example (MAVEN_SETTINGS, MAVEN_OPTS, BUILD_NETWORK).
 ARG MAVEN_OPTS=""
 ENV MAVEN_OPTS=${MAVEN_OPTS}
 WORKDIR /build
 COPY pom.xml .
-RUN mvn -q dependency:go-offline
+RUN --mount=type=secret,id=maven-settings,target=/root/.m2/settings.xml \
+    --mount=type=cache,target=/root/.m2/repository \
+    mvn -q dependency:go-offline
 COPY src ./src
-RUN mvn -q -DskipTests package
+RUN --mount=type=secret,id=maven-settings,target=/root/.m2/settings.xml \
+    --mount=type=cache,target=/root/.m2/repository \
+    mvn -q -DskipTests package
 
 # Run
 FROM eclipse-temurin:21-jre

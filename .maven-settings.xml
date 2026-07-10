@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Placeholder NEUTRE (ne pas éditer) : le build l'utilise par défaut quand
+     MAVEN_SETTINGS n'est pas défini dans .env. Pour un poste d'entreprise,
+     pointez MAVEN_SETTINGS vers votre vrai settings.xml (miroir + token) —
+     il est injecté en secret BuildKit, jamais copié dans l'image ni commité. -->
+<settings/>

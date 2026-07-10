@@ -38,6 +38,8 @@ services:
       network: ${BUILD_NETWORK:-default}
       args:
         MAVEN_OPTS: ${MAVEN_OPTS:-}
+      secrets:
+        - maven-settings
     image: ${RAG_API_IMAGE:-xrag/rag-api:local}
     container_name: xrag-api
     env_file: .env
@@ -76,3 +78,9 @@ volumes:
   ollama-models:
   pg-data:
   webui-data:
+
+secrets:
+  # settings.xml Maven pour le build (miroir/token d'entreprise). Défaut : placeholder
+  # neutre commité ; pointer MAVEN_SETTINGS (.env) vers le vrai fichier si besoin.
+  maven-settings:
+    file: ${MAVEN_SETTINGS:-./.maven-settings.xml}
