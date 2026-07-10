@@ -1,10 +1,10 @@
 package com.domwil.xrag.adapter.out.jira;
 
+import com.domwil.xrag.adapter.out.SourceAuth;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
 import tools.jackson.databind.JsonNode;
-import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
@@ -29,10 +29,10 @@ public class JiraConnector implements SourceConnector {
     private final RestClient http;
     private final TeamConfig.Jira config;
 
-    public JiraConnector(TeamConfig.Jira config, String token) {
+    public JiraConnector(TeamConfig.Jira config, SourceAuth auth) {
         this(config, RestClient.builder()
                 .baseUrl(config.baseUrl())
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .defaultHeader(auth.headerName(), auth.headerValue())
                 .build());
     }
 

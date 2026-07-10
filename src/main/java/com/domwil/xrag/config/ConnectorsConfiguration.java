@@ -1,5 +1,6 @@
 package com.domwil.xrag.config;
 
+import com.domwil.xrag.adapter.out.SourceAuth;
 import com.domwil.xrag.adapter.out.confluence.ConfluenceConnector;
 import com.domwil.xrag.adapter.out.gitlab.GitLabConnector;
 import com.domwil.xrag.adapter.out.jira.JiraConnector;
@@ -30,8 +31,9 @@ public class ConnectorsConfiguration {
         Optional<GitLabConnector> gitlab = Optional.empty();
 
         if (sources.confluence() != null) {
-            documentConnectors.add(new ConfluenceConnector(
-                    sources.confluence(), env.getProperty("CONFLUENCE_TOKEN", "")));
+            var auth = sourceAuth(env, "CONFLUENCE");
+            log.info("Confluence : authentification {}", auth.mode());
+            documentConnectors.add(new ConfluenceConnector(sources.confluence(), auth));
         }
         if (sources.gitlab() != null) {
             gitlab = Optional.of(new GitLabConnector(
@@ -39,12 +41,20 @@ public class ConnectorsConfiguration {
             documentConnectors.add(gitlab.get());
         }
         if (sources.jira() != null) {
-            documentConnectors.add(new JiraConnector(
-                    sources.jira(), env.getProperty("JIRA_TOKEN", "")));
+            var auth = sourceAuth(env, "JIRA");
+            log.info("Jira : authentification {}", auth.mode());
+            documentConnectors.add(new JiraConnector(sources.jira(), auth));
         }
 
         log.info("Connecteurs actifs : {}",
                 documentConnectors.stream().map(SourceConnector::source).toList());
         return new ConnectorRegistry(documentConnectors, gitlab.map(g -> g));
+    }
+
+    private static SourceAuth sourceAuth(Environment env, String prefix) {
+        return SourceAuth.resolve(
+                env.getProperty(prefix + "_TOKEN", ""),
+                env.getProperty(prefix + "_USER", ""),
+                env.getProperty(prefix + "_COOKIE", ""));
     }
 }

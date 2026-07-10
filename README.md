@@ -46,6 +46,20 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
 
 Mises à jour : `docker compose pull && docker compose up -d` (Liquibase migre au démarrage).
 
+### Authentification Confluence/Jira
+
+Trois modes, résolus depuis `.env` par ordre de priorité (voir `.env.example`) :
+
+1. **cookie** (`CONFLUENCE_COOKIE` / `JIRA_COOKIE`) : chaîne `Cookie` brute copiée d'une
+   session navigateur authentifiée (SSO, certificat SoftID…). Mode **dev/validation** —
+   expire avec la session ; le health check du batch signale l'expiration.
+2. **basic** (`CONFLUENCE_USER` + `CONFLUENCE_TOKEN`, idem Jira) : compte de service
+   Data Center, ou Atlassian Cloud (email + API token).
+3. **bearer** (`CONFLUENCE_TOKEN` seul, défaut) : PAT Data Center.
+
+Si l'instance est servie sous un context path (`https://host/confluence`), l'inclure
+dans le `base-url` du `team-config.yml`. GitLab reste en PAT (`GITLAB_TOKEN`).
+
 ## CI et images versionnées
 
 - Chaque PR et chaque push sur `main` exécutent `mvn verify` (workflow `ci`).
