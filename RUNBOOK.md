@@ -160,6 +160,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 
 | Symptôme | Cause probable | Remède |
 |---|---|---|
+| Build : `Network is unreachable` sur `repo.maven.apache.org` | Proxy d'entreprise — le conteneur de build Maven n'a pas d'accès direct (la JVM ignore `HTTP_PROXY`) | Diagnostic : `curl -sI https://repo.maven.apache.org/maven2/` depuis 🐧. Réponse OK → `BUILD_NETWORK=host` dans `.env` ; échec aussi → `MAVEN_OPTS=-Dhttps.proxyHost=... -Dhttps.proxyPort=...` (proxy : 🪟 `netsh winhttp show proxy`). Puis `docker compose build rag-api` |
 | Préflight `[KO] ... HTTP 401` | Cookie expiré ou token invalide | §8 rafraîchissement des cookies |
 | Préflight `[KO] ... HTTP 404` | Context path absent du `base-url`, ou clé espace/projet erronée | Corriger `team-config.yml` (ex. `https://host/confluence`) |
 | Préflight `200 mais contenu inattendu (HTML)` | Redirection vers la mire SSO | Cookies incomplets — recopier **tous** les cookies du domaine |
