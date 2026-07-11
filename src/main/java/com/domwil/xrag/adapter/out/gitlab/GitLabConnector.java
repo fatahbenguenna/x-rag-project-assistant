@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.out.gitlab;
 
+import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.MergeRequestMeta;
 import com.domwil.xrag.domain.model.SourceDocument;
@@ -43,6 +44,7 @@ public class GitLabConnector implements SourceConnector, MergeRequestConnector {
         this(config, RestClient.builder()
                 .baseUrl(config.baseUrl())
                 .defaultHeader("PRIVATE-TOKEN", token)
+                .requestInterceptor(new ReadOnlyHttpGuard())
                 .build());
     }
 

@@ -1,10 +1,11 @@
 package com.domwil.xrag.adapter.out.confluence;
 
+import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
+import com.domwil.xrag.adapter.out.SourceAuth;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
 import tools.jackson.databind.JsonNode;
-import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
@@ -30,10 +31,11 @@ public class ConfluenceConnector implements SourceConnector {
     private final RestClient http;
     private final TeamConfig.Confluence config;
 
-    public ConfluenceConnector(TeamConfig.Confluence config, String token) {
+    public ConfluenceConnector(TeamConfig.Confluence config, SourceAuth auth) {
         this(config, RestClient.builder()
                 .baseUrl(config.baseUrl())
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .defaultHeader(auth.headerName(), auth.headerValue())
+                .requestInterceptor(new ReadOnlyHttpGuard())
                 .build());
     }
 

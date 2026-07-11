@@ -4,8 +4,16 @@ services:
     container_name: xrag-ollama
     volumes:
       - ollama-models:/root/.ollama
+      # CA racine d'entreprise (proxy avec interception TLS) — voir CORPORATE_CA
+      # dans .env.example ; défaut /dev/null = sans effet.
+      - ${CORPORATE_CA:-/dev/null}:/etc/ssl/certs/corporate-ca.pem:ro
     environment:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-24h}
+      # Proxy d'entreprise pour le téléchargement des modèles (ollama pull) —
+      # Ollama honore ces variables ; vide = accès direct. Voir .env.example.
+      HTTP_PROXY: ${PROXY_URL:-}
+      HTTPS_PROXY: ${PROXY_URL:-}
+      NO_PROXY: ${NO_PROXY_URL:-localhost,127.0.0.1,0.0.0.0}
     ports:
       - "11434:11434"
     restart: unless-stopped
@@ -29,9 +37,17 @@ services:
     restart: unless-stopped
 
   rag-api:
-    # Image versionnée du registry (docker compose pull) ; `build: .` reste
+    # Image versionnée du registry (docker compose pull) ; le build local reste
     # disponible pour le développement (docker compose build).
-    build: .
+    # Poste derrière un proxy d'entreprise : voir MAVEN_OPTS / BUILD_NETWORK dans
+    # .env.example si le build échoue en « Network is unreachable » sur Maven Central.
+    build:
+      context: .
+      network: ${BUILD_NETWORK:-default}
+      args:
+        MAVEN_OPTS: ${MAVEN_OPTS:-}
+      secrets:
+        - maven-settings
     image: ${RAG_API_IMAGE:-xrag/rag-api:local}
     container_name: xrag-api
     env_file: .env
@@ -70,3 +86,9 @@ volumes:
   ollama-models:
   pg-data:
   webui-data:
+
+secrets:
+  # settings.xml Maven pour le build (miroir/token d'entreprise). Défaut : placeholder
+  # neutre commité ; pointer MAVEN_SETTINGS (.env) vers le vrai fichier si besoin.
+  maven-settings:
+    file: ${MAVEN_SETTINGS:-./.maven-settings.xml}

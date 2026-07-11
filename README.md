@@ -40,11 +40,83 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
 5. **Modèles** :
    `docker exec xrag-ollama ollama pull qwen2.5:7b-instruct` et
    `docker exec xrag-ollama ollama pull bge-m3`.
-6. **Indexation initiale** : `./bootstrap.sh` (3 à 6 h la première nuit selon le volume).
-7. **Vérifier** : le smoke test s'exécute en fin de bootstrap ; l'API répond sur
+6. **Préflight** : `./scripts/check-connections.sh` — teste Postgres, Ollama (+ modèles),
+   GitLab, Confluence et Jira avec les credentials du `.env` et la même logique
+   d'authentification que l'application. Tout doit être vert avant d'indexer.
+7. **Indexation initiale** : `./bootstrap.sh` (3 à 6 h la première nuit selon le volume).
+8. **Vérifier** : le smoke test s'exécute en fin de bootstrap ; l'API répond sur
    `http://localhost:8080`, l'UI (si activée) sur `http://localhost:3000`.
 
 Mises à jour : `docker compose pull && docker compose up -d` (Liquibase migre au démarrage).
+
+> 📘 Guide opérationnel détaillé (étapes 🪟 Windows / 🐧 WSL, accès aux services,
+> exploitation courante, dépannage) : **[RUNBOOK.md](RUNBOOK.md)**.
+
+### Windows : toute la chaîne s'exécute dans WSL (Ubuntu)
+
+Docker tourne dans WSL — travaillez depuis un terminal **WSL Ubuntu**, jamais depuis
+PowerShell (où `curl` est un alias d'`Invoke-WebRequest` ; à défaut, utiliser `curl.exe`).
+
+```bash
+# 0. Prérequis (une fois) : Docker Desktop avec intégration WSL activée pour Ubuntu,
+#    ou docker-ce natif dans WSL2. Vérifier :
+docker version && docker compose version
+
+# 1. Cloner DANS le système de fichiers WSL (~/), PAS dans /mnt/c
+#    (I/O beaucoup plus lentes sur /mnt/c — critique pour Postgres et les embeddings)
+cd ~ && git clone https://github.com/fatahbenguenna/x-rag-project-assistant.git
+cd x-rag-project-assistant
+
+# 2. Secrets et configuration
+cp .env.example .env && nano .env                          # tokens/cookies
+cp team-config.example.yml team-config.yml && nano team-config.yml
+
+# 3. Démarrer la pile et tirer les modèles
+docker compose up -d
+docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
+docker exec xrag-ollama ollama pull qwen2.5:3b
+docker exec xrag-ollama ollama pull bge-m3
+
+# 4. Préflight : toutes les connexions vertes avant d'indexer
+./scripts/check-connections.sh
+
+# 5. Indexation initiale (3-6 h selon le volume), puis questions
+./bootstrap.sh
+```
+
+Notes WSL :
+
+- **Ollama : rien à installer** — ni sous Windows ni sous WSL : le compose embarque son
+  propre Ollama en conteneur (`xrag-ollama`), avec ses modèles dans un volume Docker.
+  Si l'application Ollama **Windows** tourne déjà, quittez-la pendant l'utilisation de la
+  pile : elle occupe le port 11434 côté Windows (confusion possible en déboguant depuis
+  le navigateur) et consommerait de la RAM en double si un modèle y est chargé.
+- **RAM** : WSL2 se limite par défaut à ~50 % de la RAM. Pour l'inférence CPU du 7B,
+  allouer au moins 20 Go dans `C:\Users\<vous>\.wslconfig` (`[wsl2]` puis `memory=20GB`),
+  puis `wsl --shutdown` pour appliquer.
+- **Accès depuis Windows** : localhost est partagé — API sur `http://localhost:8080`,
+  Open WebUI sur `http://localhost:3000` depuis le navigateur Windows.
+- **Cookies SSO** : copiés depuis DevTools du navigateur Windows vers le `.env` de WSL —
+  c'est du texte, aucune friction Windows/WSL.
+
+### Authentification Confluence/Jira
+
+Trois modes, résolus depuis `.env` par ordre de priorité (voir `.env.example`) :
+
+1. **cookie** (`CONFLUENCE_COOKIE` / `JIRA_COOKIE`) : chaîne `Cookie` brute copiée d'une
+   session navigateur authentifiée (SSO, certificat SoftID…). Mode **dev/validation** —
+   expire avec la session ; le health check du batch signale l'expiration.
+2. **basic** (`CONFLUENCE_USER` + `CONFLUENCE_TOKEN`, idem Jira) : compte de service
+   Data Center, ou Atlassian Cloud (email + API token).
+3. **bearer** (`CONFLUENCE_TOKEN` seul, défaut) : PAT Data Center.
+
+Si l'instance est servie sous un context path (`https://host/confluence`), l'inclure
+dans le `base-url` du `team-config.yml`. GitLab reste en PAT (`GITLAB_TOKEN`).
+
+**Lecture seule garantie** : les connecteurs n'émettent que des GET, et un garde-fou
+structurel (`ReadOnlyHttpGuard`) rejette toute requête d'écriture avant envoi — même des
+credentials personnels avec droits d'écriture ne peuvent pas altérer les plateformes
+(détails : RUNBOOK.md, « Garanties lecture seule »).
 
 ## CI et images versionnées
 
