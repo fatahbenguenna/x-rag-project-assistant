@@ -165,6 +165,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Préflight `[KO] ... HTTP 404` | Context path absent du `base-url`, ou clé espace/projet erronée | Corriger `team-config.yml` (ex. `https://host/confluence`) |
 | Préflight `200 mais contenu inattendu (HTML)` | Redirection vers la mire SSO | Cookies incomplets — recopier **tous** les cookies du domaine |
 | `ollama pull` : `i/o timeout` vers `registry.ollama.ai` | Proxy d'entreprise — le conteneur ne peut pas sortir en direct | `PROXY_URL=http://proxy...:port` dans `.env` (même hôte/port que le settings.xml Maven), puis `docker compose up -d ollama` et relancer le pull |
+| `ollama pull` : « something went wrong » | Voir la vraie erreur : `docker logs xrag-ollama --tail 30` | `x509: unknown authority` → interception TLS : `CORPORATE_CA=/chemin/ca-entreprise.pem` (export 🪟 `certmgr.msc` en Base64) puis `docker compose up -d ollama` · `407` → `PROXY_URL=http://login:mdp@proxy...` · `403` → demander la liste blanche de `registry.ollama.ai` |
 | Ollama injoignable | Conteneur arrêté, ou confusion avec l'Ollama Windows | `docker compose up -d` ; quitter l'app Ollama Windows |
 | Conteneur `ollama` tué / OOM | Limite mémoire WSL2 | §1.2 `.wslconfig` `memory=20GB`, `wsl --shutdown` |
 | Indexation très lente, I/O saturées | Dépôt cloné sous `/mnt/c` | Recloner dans `~` (FS ext4 de WSL) |

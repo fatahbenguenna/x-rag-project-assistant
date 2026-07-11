@@ -4,6 +4,9 @@ services:
     container_name: xrag-ollama
     volumes:
       - ollama-models:/root/.ollama
+      # CA racine d'entreprise (proxy avec interception TLS) — voir CORPORATE_CA
+      # dans .env.example ; défaut /dev/null = sans effet.
+      - ${CORPORATE_CA:-/dev/null}:/etc/ssl/certs/corporate-ca.pem:ro
     environment:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-24h}
       # Proxy d'entreprise pour le téléchargement des modèles (ollama pull) —
