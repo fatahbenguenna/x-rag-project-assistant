@@ -10,7 +10,7 @@ services:
       # Ollama honore ces variables ; vide = accès direct. Voir .env.example.
       HTTP_PROXY: ${PROXY_URL:-}
       HTTPS_PROXY: ${PROXY_URL:-}
-      NO_PROXY: localhost,127.0.0.1
+      NO_PROXY: ${NO_PROXY_URL:-localhost,127.0.0.1}
     ports:
       - "11434:11434"
     restart: unless-stopped
