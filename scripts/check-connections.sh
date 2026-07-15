@@ -139,7 +139,7 @@ if [ -n "$confluence_url" ]; then
   resolve_atlassian CONFLUENCE "$confluence_url" confluence
   space=$(first_of_list "$(yaml_value confluence spaces)")
   http_json "Confluence space $space [$RA_MODE]" '"results"' \
-    "$RA_BASE/rest/api/content?spaceKey=$space&limit=1" "${RA_AUTH[@]}"
+    "$RA_BASE/api/v2/spaces?keys=$space&limit=1" "${RA_AUTH[@]}"
 fi
 
 # --- Jira ------------------------------------------------------------------------
@@ -147,10 +147,10 @@ jira_url=$(yaml_value jira base-url)
 if [ -n "$jira_url" ]; then
   resolve_atlassian JIRA "$jira_url" jira
   http_json "Jira identité (myself) [$RA_MODE]" '"name"\|"displayName"\|"accountId"' \
-    "$RA_BASE/rest/api/2/myself" "${RA_AUTH[@]}"
+    "$RA_BASE/rest/api/3/myself" "${RA_AUTH[@]}"
   project=$(first_of_list "$(yaml_value jira projects)")
-  http_json "Jira projet $project [$RA_MODE]" '"key"' \
-    "$RA_BASE/rest/api/2/project/$project" "${RA_AUTH[@]}"
+  http_json "Jira recherche $project [$RA_MODE]" '"issues"' \
+    "$RA_BASE/rest/api/3/search/jql?jql=project%20in%20($project)&maxResults=1" "${RA_AUTH[@]}"
 fi
 
 # --- rag-api (optionnel : seulement si la pile tourne) --------------------------
