@@ -12,13 +12,21 @@ llm:
 
 sources:
   confluence:
+    # base-url = racine de l'API, PAS une URL de navigateur (ni /spaces, ni /pages...).
+    #   Cloud       : https://votre-org.atlassian.net/wiki   (suffixe /wiki OBLIGATOIRE)
+    #   Data Center : https://confluence.interne.example
     base-url: https://confluence.example.com
     spaces: [PASS, ARCHI]
   gitlab:
+    # base-url = racine de l'instance, SANS le chemin du groupe.
+    #   SaaS : https://gitlab.com      Self-managed : https://gitlab.interne.example
     base-url: https://gitlab.example.com
     group: passerelle           # découverte automatique des repos du groupe
     branches: [main, develop]
   jira:
+    # base-url = racine du site, SANS /jira ni /wiki.
+    #   Cloud       : https://votre-org.atlassian.net
+    #   Data Center : https://jira.interne.example
     base-url: https://jira.example.com
     projects: [PASS, INFRA]
 
