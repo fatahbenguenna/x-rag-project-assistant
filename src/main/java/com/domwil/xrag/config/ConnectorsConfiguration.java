@@ -1,6 +1,10 @@
 package com.domwil.xrag.config;
 
-import com.domwil.xrag.adapter.out.SourceAuth;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianCloudIdResolver;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianConnection;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianConnectionFactory;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianProduct;
+import com.domwil.xrag.adapter.out.atlassian.SourceCredentials;
 import com.domwil.xrag.adapter.out.confluence.ConfluenceConnector;
 import com.domwil.xrag.adapter.out.gitlab.GitLabConnector;
 import com.domwil.xrag.adapter.out.jira.JiraConnector;
@@ -11,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
 import java.util.Optional;
@@ -24,6 +29,12 @@ public class ConnectorsConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ConnectorsConfiguration.class);
 
+    // CloudIdResolver et client OAuth utilisent des builders SÉPARÉS : le premier ajoute
+    // le garde-fou lecture seule (GET), le second doit pouvoir POSTer vers le token endpoint.
+    private final AtlassianConnectionFactory connectionFactory = new AtlassianConnectionFactory(
+            new AtlassianCloudIdResolver(RestClient.builder()),
+            RestClient.builder());
+
     @Bean
     public ConnectorRegistry connectorRegistry(TeamConfig config, Environment env) {
         var sources = config.sources();
@@ -31,9 +42,10 @@ public class ConnectorsConfiguration {
         Optional<GitLabConnector> gitlab = Optional.empty();
 
         if (sources.confluence() != null) {
-            var auth = sourceAuth(env, "CONFLUENCE");
-            log.info("Confluence : authentification {}", auth.mode());
-            documentConnectors.add(new ConfluenceConnector(sources.confluence(), auth));
+            var connection = atlassianConnection(env, "CONFLUENCE",
+                    sources.confluence().baseUrl(), AtlassianProduct.CONFLUENCE);
+            log.info("Confluence : authentification {}", connection.mode());
+            documentConnectors.add(new ConfluenceConnector(sources.confluence(), connection));
         }
         if (sources.gitlab() != null) {
             gitlab = Optional.of(new GitLabConnector(
@@ -41,9 +53,10 @@ public class ConnectorsConfiguration {
             documentConnectors.add(gitlab.get());
         }
         if (sources.jira() != null) {
-            var auth = sourceAuth(env, "JIRA");
-            log.info("Jira : authentification {}", auth.mode());
-            documentConnectors.add(new JiraConnector(sources.jira(), auth));
+            var connection = atlassianConnection(env, "JIRA",
+                    sources.jira().baseUrl(), AtlassianProduct.JIRA);
+            log.info("Jira : authentification {}", connection.mode());
+            documentConnectors.add(new JiraConnector(sources.jira(), connection));
         }
 
         log.info("Connecteurs actifs : {}",
@@ -51,10 +64,14 @@ public class ConnectorsConfiguration {
         return new ConnectorRegistry(documentConnectors, gitlab.map(g -> g));
     }
 
-    private static SourceAuth sourceAuth(Environment env, String prefix) {
-        return SourceAuth.resolve(
+    private AtlassianConnection atlassianConnection(Environment env, String prefix,
+                                                    String baseUrl, AtlassianProduct product) {
+        var creds = new SourceCredentials(
                 env.getProperty(prefix + "_TOKEN", ""),
                 env.getProperty(prefix + "_USER", ""),
-                env.getProperty(prefix + "_COOKIE", ""));
+                env.getProperty(prefix + "_COOKIE", ""),
+                env.getProperty(prefix + "_OAUTH_CLIENT_ID", ""),
+                env.getProperty(prefix + "_OAUTH_CLIENT_SECRET", ""));
+        return connectionFactory.create(creds, baseUrl, product);
     }
 }

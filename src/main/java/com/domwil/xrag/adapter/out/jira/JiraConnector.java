@@ -1,7 +1,7 @@
 package com.domwil.xrag.adapter.out.jira;
 
 import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
-import com.domwil.xrag.adapter.out.SourceAuth;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianConnection;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
@@ -30,12 +30,16 @@ public class JiraConnector implements SourceConnector {
     private final RestClient http;
     private final TeamConfig.Jira config;
 
-    public JiraConnector(TeamConfig.Jira config, SourceAuth auth) {
-        this(config, RestClient.builder()
-                .baseUrl(config.baseUrl())
-                .defaultHeader(auth.headerName(), auth.headerValue())
-                .requestInterceptor(new ReadOnlyHttpGuard())
-                .build());
+    public JiraConnector(TeamConfig.Jira config, AtlassianConnection connection) {
+        this(config, buildClient(connection));
+    }
+
+    private static RestClient buildClient(AtlassianConnection connection) {
+        var builder = RestClient.builder()
+                .baseUrl(connection.baseUrl())
+                .requestInterceptor(new ReadOnlyHttpGuard());
+        connection.applyAuth(builder);
+        return builder.build();
     }
 
     JiraConnector(TeamConfig.Jira config, RestClient http) {
