@@ -74,6 +74,7 @@ resolve_atlassian() { # resolve_atlassian <prefix> <base-url> <produit: confluen
   cookie=$(getvar "${prefix}_COOKIE")
   cid=$(getvar "${prefix}_OAUTH_CLIENT_ID"); secret=$(getvar "${prefix}_OAUTH_CLIENT_SECRET")
   suffix=""; [ "$product" = confluence ] && suffix="/wiki"
+  if printf '%s' "$base" | grep -q '\.atlassian\.net'; then RA_PLATFORM=cloud; else RA_PLATFORM=datacenter; fi
   RA_AUTH=()
 
   if [ -n "$cookie" ]; then
@@ -85,7 +86,7 @@ resolve_atlassian() { # resolve_atlassian <prefix> <base-url> <produit: confluen
     RA_AUTH=(--header "Authorization: Bearer $access")
   elif [ -n "$user" ]; then
     RA_MODE=basic; RA_BASE=$base; RA_AUTH=(--user "$user:$token")
-  elif [ -n "$token" ] && printf '%s' "$base" | grep -q '\.atlassian\.net'; then
+  elif [ -n "$token" ] && [ "$RA_PLATFORM" = cloud ]; then
     RA_MODE=scoped
     cloudid=$(tenant_cloud_id "$base")
     RA_BASE="https://api.atlassian.com/ex/$product/$cloudid$suffix"
@@ -138,19 +139,31 @@ confluence_url=$(yaml_value confluence base-url)
 if [ -n "$confluence_url" ]; then
   resolve_atlassian CONFLUENCE "$confluence_url" confluence
   space=$(first_of_list "$(yaml_value confluence spaces)")
-  http_json "Confluence space $space [$RA_MODE]" '"results"' \
-    "$RA_BASE/api/v2/spaces?keys=$space&limit=1" "${RA_AUTH[@]}"
+  if [ "$RA_PLATFORM" = cloud ]; then
+    http_json "Confluence space $space [$RA_MODE/cloud]" '"results"' \
+      "$RA_BASE/api/v2/spaces?keys=$space&limit=1" "${RA_AUTH[@]}"
+  else
+    http_json "Confluence space $space [$RA_MODE/dc]" '"results"' \
+      "$RA_BASE/rest/api/content?spaceKey=$space&limit=1" "${RA_AUTH[@]}"
+  fi
 fi
 
 # --- Jira ------------------------------------------------------------------------
 jira_url=$(yaml_value jira base-url)
 if [ -n "$jira_url" ]; then
   resolve_atlassian JIRA "$jira_url" jira
-  http_json "Jira identité (myself) [$RA_MODE]" '"name"\|"displayName"\|"accountId"' \
-    "$RA_BASE/rest/api/3/myself" "${RA_AUTH[@]}"
   project=$(first_of_list "$(yaml_value jira projects)")
-  http_json "Jira recherche $project [$RA_MODE]" '"issues"' \
-    "$RA_BASE/rest/api/3/search/jql?jql=project%20in%20($project)&maxResults=1" "${RA_AUTH[@]}"
+  if [ "$RA_PLATFORM" = cloud ]; then
+    http_json "Jira identité (myself) [$RA_MODE/cloud]" '"name"\|"displayName"\|"accountId"' \
+      "$RA_BASE/rest/api/3/myself" "${RA_AUTH[@]}"
+    http_json "Jira recherche $project [$RA_MODE/cloud]" '"issues"' \
+      "$RA_BASE/rest/api/3/search/jql?jql=project%20in%20($project)&maxResults=1" "${RA_AUTH[@]}"
+  else
+    http_json "Jira identité (myself) [$RA_MODE/dc]" '"name"\|"displayName"\|"accountId"' \
+      "$RA_BASE/rest/api/2/myself" "${RA_AUTH[@]}"
+    http_json "Jira recherche $project [$RA_MODE/dc]" '"issues"' \
+      "$RA_BASE/rest/api/2/search?jql=project%20in%20($project)&maxResults=1" "${RA_AUTH[@]}"
+  fi
 fi
 
 # --- rag-api (optionnel : seulement si la pile tourne) --------------------------

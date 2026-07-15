@@ -2,6 +2,7 @@ package com.domwil.xrag.adapter.out.jira;
 
 import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
 import com.domwil.xrag.adapter.out.atlassian.AtlassianConnection;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianPlatform;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
@@ -16,9 +17,11 @@ import java.util.HashMap;
 import java.util.List;
 
 /**
- * Adapter Jira (REST API v3, JQL). Sync incrémentale par {@code updated >= ...}.
- * Utilise {@code /rest/api/3/search/jql} avec pagination par {@code nextPageToken} —
- * l'ancien {@code /rest/api/2/search} a été supprimé par Atlassian (HTTP 410).
+ * Adapter Jira bi-plateforme (JQL, sync incrémentale par {@code updated >= ...}).
+ * <b>Cloud</b> : {@code /rest/api/3/search/jql} (pagination nextPageToken). <b>Data Center /
+ * Server</b> : {@code /rest/api/2/search} (pagination startAt/total). La plateforme est
+ * déduite de la base-url ({@code *.atlassian.net} = Cloud). La lecture des issues (dont la
+ * description, ADF en Cloud ou wiki markup en Data Center) est commune aux deux chemins.
  */
 public class JiraConnector implements SourceConnector {
 
@@ -32,6 +35,7 @@ public class JiraConnector implements SourceConnector {
 
     private final RestClient http;
     private final TeamConfig.Jira config;
+    private final AtlassianPlatform platform;
 
     public JiraConnector(TeamConfig.Jira config, AtlassianConnection connection) {
         this(config, buildClient(connection));
@@ -48,6 +52,7 @@ public class JiraConnector implements SourceConnector {
     JiraConnector(TeamConfig.Jira config, RestClient http) {
         this.config = config;
         this.http = http;
+        this.platform = AtlassianPlatform.of(config.baseUrl());
     }
 
     @Override
@@ -57,23 +62,32 @@ public class JiraConnector implements SourceConnector {
 
     @Override
     public List<SourceDocument> fetchChangedSince(Instant since) {
+        String jql = buildJql(since);
+        return platform.isCloud() ? fetchCloud(jql) : fetchDataCenter(jql);
+    }
+
+    private String buildJql(Instant since) {
         String jql = "project in (" + String.join(", ", config.projects()) + ")";
         if (since != null) {
             jql += " and updated >= \"" + JQL_DATE.format(since) + "\"";
         }
-        jql += " order by updated asc";
+        return jql + " order by updated asc";
+    }
 
+    // ---- Cloud : /rest/api/3/search/jql (nextPageToken) ------------------------
+
+    private List<SourceDocument> fetchCloud(String jql) {
         var documents = new ArrayList<SourceDocument>();
         String pageToken = null;
         do {
-            JsonNode page = search(jql, pageToken);
+            JsonNode page = searchJql(jql, pageToken);
             page.path("issues").forEach(issue -> documents.add(toDocument(issue)));
             pageToken = page.path("nextPageToken").asText(null);
         } while (pageToken != null && !pageToken.isBlank());
         return documents;
     }
 
-    private JsonNode search(String jql, String pageToken) {
+    private JsonNode searchJql(String jql, String pageToken) {
         return http.get()
                 .uri(uri -> {
                     uri.path("/rest/api/3/search/jql")
@@ -88,6 +102,36 @@ public class JiraConnector implements SourceConnector {
                 .retrieve()
                 .body(JsonNode.class);
     }
+
+    // ---- Data Center / Server : /rest/api/2/search (startAt/total) -------------
+
+    private List<SourceDocument> fetchDataCenter(String jql) {
+        var documents = new ArrayList<SourceDocument>();
+        int startAt = 0;
+        while (true) {
+            JsonNode page = searchV2(jql, startAt);
+            JsonNode issues = page.path("issues");
+            issues.forEach(issue -> documents.add(toDocument(issue)));
+            startAt += issues.size();
+            if (startAt >= page.path("total").asInt() || issues.isEmpty()) {
+                return documents;
+            }
+        }
+    }
+
+    private JsonNode searchV2(String jql, int startAt) {
+        return http.get()
+                .uri(uri -> uri.path("/rest/api/2/search")
+                        .queryParam("jql", jql)
+                        .queryParam("fields", FIELDS)
+                        .queryParam("maxResults", PAGE_SIZE)
+                        .queryParam("startAt", startAt)
+                        .build())
+                .retrieve()
+                .body(JsonNode.class);
+    }
+
+    // ---- Lecture commune -------------------------------------------------------
 
     private SourceDocument toDocument(JsonNode issue) {
         String key = issue.path("key").asText();
@@ -124,8 +168,8 @@ public class JiraConnector implements SourceConnector {
     }
 
     /**
-     * Extrait le texte plein d'un champ Jira : chaîne simple, ou document ADF (Atlassian
-     * Document Format) tel que renvoyé par l'API v3 pour {@code description}.
+     * Extrait le texte plein d'un champ Jira : chaîne (wiki markup, Data Center) ou document
+     * ADF (Atlassian Document Format, Cloud API v3).
      */
     private static String extractText(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) {

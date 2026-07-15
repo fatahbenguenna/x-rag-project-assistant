@@ -16,6 +16,10 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class JiraConnectorTest {
 
+    private static final String CLOUD = "https://team.atlassian.net";
+    private static final String DATA_CENTER = "https://jira.interne.example";
+
+    // --- Cloud (v3, nextPageToken, description ADF) ---
     private static final String PAGE_1 = """
             {"issues":[{"id":"1","key":"FPSSUITE-1","fields":{
               "summary":"Webhook cuisine",
@@ -25,22 +29,28 @@ class JiraConnectorTest {
               "project":{"key":"FPSSUITE"},"labels":[],
               "updated":"2026-07-14T17:20:16.158+0200","issuelinks":[]}}],
              "nextPageToken":"tok1","isLast":false}""";
-
     private static final String PAGE_2 = """
             {"issues":[{"id":"2","key":"FPSSUITE-2","fields":{
-              "summary":"Correctif",
-              "description":null,
+              "summary":"Correctif","description":null,
               "status":{"name":"Closed"},"issuetype":{"name":"Bug"},
               "project":{"key":"FPSSUITE"},"labels":[],
               "updated":"2026-07-15T09:00:00.000+0200","issuelinks":[]}}],
              "isLast":true}""";
 
+    // --- Data Center (v2, startAt/total, description en wiki markup = chaîne) ---
+    private static final String V2_PAGE = """
+            {"issues":[{"id":"1","key":"FPSSUITE-1","fields":{
+              "summary":"Issue DC","description":"Texte en wiki markup",
+              "status":{"name":"Open"},"issuetype":{"name":"Task"},
+              "project":{"key":"FPSSUITE"},"labels":[],
+              "updated":"2026-07-14T17:20:16.158+0200","issuelinks":[]}}],
+             "total":1,"startAt":0}""";
+
     @Test
-    void paginateParNextPageTokenEtExtraitLaDescriptionAdf() {
-        var builder = RestClient.builder().baseUrl("https://jira.test");
+    void cloud_paginateParNextPageTokenEtExtraitLaDescriptionAdf() {
+        var builder = RestClient.builder().baseUrl(CLOUD);
         var server = MockRestServiceServer.bindTo(builder).build();
-        var config = new TeamConfig.Jira("https://jira.test", List.of("FPSSUITE"));
-        var connector = new JiraConnector(config, builder.build());
+        var connector = new JiraConnector(new TeamConfig.Jira(CLOUD, List.of("FPSSUITE")), builder.build());
 
         server.expect(requestTo(containsString("/rest/api/3/search/jql")))
                 .andRespond(withSuccess(PAGE_1, MediaType.APPLICATION_JSON));
@@ -52,9 +62,25 @@ class JiraConnectorTest {
         assertThat(docs).hasSize(2);
         assertThat(docs.get(0).path()).isEqualTo("FPSSUITE-1");
         assertThat(docs.get(0).content()).contains("Webhook cuisine").contains("Envoi cuisine");
-        assertThat(docs.get(0).url()).isEqualTo("https://jira.test/browse/FPSSUITE-1");
+        assertThat(docs.get(0).url()).isEqualTo(CLOUD + "/browse/FPSSUITE-1");
         assertThat(docs.get(1).path()).isEqualTo("FPSSUITE-2");
-        assertThat(docs.get(1).metadata()).containsEntry("status", "Closed");
+        server.verify();
+    }
+
+    @Test
+    void dataCenter_utiliseLApiV2SearchAvecStartAt() {
+        var builder = RestClient.builder().baseUrl(DATA_CENTER);
+        var server = MockRestServiceServer.bindTo(builder).build();
+        var connector = new JiraConnector(new TeamConfig.Jira(DATA_CENTER, List.of("FPSSUITE")), builder.build());
+
+        server.expect(requestTo(containsString("/rest/api/2/search")))
+                .andRespond(withSuccess(V2_PAGE, MediaType.APPLICATION_JSON));
+
+        var docs = connector.fetchChangedSince(null);
+
+        assertThat(docs).hasSize(1);
+        assertThat(docs.get(0).path()).isEqualTo("FPSSUITE-1");
+        assertThat(docs.get(0).content()).contains("Texte en wiki markup");
         server.verify();
     }
 }

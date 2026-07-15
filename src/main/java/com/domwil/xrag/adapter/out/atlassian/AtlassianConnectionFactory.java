@@ -39,7 +39,7 @@ public final class AtlassianConnectionFactory {
         if (creds.hasUser()) {
             return direct(creds, baseUrl);
         }
-        if (creds.hasToken() && isCloud(baseUrl)) {
+        if (creds.hasToken() && AtlassianPlatform.of(baseUrl).isCloud()) {
             return new GatewayTokenConnection(gatewayBaseUrl(baseUrl, product), creds.token());
         }
         return direct(creds, baseUrl);
@@ -59,9 +59,5 @@ public final class AtlassianConnectionFactory {
     private String gatewayBaseUrl(String baseUrl, AtlassianProduct product) {
         String cloudId = cloudIdResolver.resolve(baseUrl);
         return GATEWAY_PREFIX + product.slug() + "/" + cloudId + product.pathSuffix();
-    }
-
-    private static boolean isCloud(String baseUrl) {
-        return baseUrl != null && baseUrl.contains(".atlassian.net");
     }
 }

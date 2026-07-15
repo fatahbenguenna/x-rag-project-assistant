@@ -2,6 +2,7 @@ package com.domwil.xrag.adapter.out.confluence;
 
 import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
 import com.domwil.xrag.adapter.out.atlassian.AtlassianConnection;
+import com.domwil.xrag.adapter.out.atlassian.AtlassianPlatform;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
@@ -12,25 +13,28 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Adapter Confluence (REST API v2). Pour chaque space configuré : résolution
- * {@code spaceKey -> space-id}, puis listing des pages trié par date de modification
- * décroissante ({@code body-format=storage}), paginé par cursor. La sync incrémentale
- * s'arrête dès qu'une page est antérieure à {@code since} (les pages étant triées
- * décroissant). L'API v1 ({@code /rest/api/content}) a été retirée par Atlassian.
+ * Adapter Confluence bi-plateforme. <b>Cloud</b> : API v2 (spaces -> pages, cursor, body
+ * storage). <b>Data Center / Server</b> : API v1 (CQL search, pagination start/limit). La
+ * plateforme est déduite de la base-url ({@code *.atlassian.net} = Cloud).
  */
 public class ConfluenceConnector implements SourceConnector {
 
     public static final String SOURCE = "confluence";
 
     private static final int PAGE_SIZE = 50;
+    private static final DateTimeFormatter CQL_DATE =
+            DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneOffset.UTC);
 
     private final RestClient http;
     private final TeamConfig.Confluence config;
+    private final AtlassianPlatform platform;
 
     public ConfluenceConnector(TeamConfig.Confluence config, AtlassianConnection connection) {
         this(config, buildClient(connection));
@@ -47,6 +51,7 @@ public class ConfluenceConnector implements SourceConnector {
     ConfluenceConnector(TeamConfig.Confluence config, RestClient http) {
         this.config = config;
         this.http = http;
+        this.platform = AtlassianPlatform.of(config.baseUrl());
     }
 
     @Override
@@ -56,11 +61,17 @@ public class ConfluenceConnector implements SourceConnector {
 
     @Override
     public List<SourceDocument> fetchChangedSince(Instant since) {
+        return platform.isCloud() ? fetchCloud(since) : fetchDataCenter(since);
+    }
+
+    // ---- Cloud : API v2 --------------------------------------------------------
+
+    private List<SourceDocument> fetchCloud(Instant since) {
         var documents = new ArrayList<SourceDocument>();
         for (String spaceKey : config.spaces()) {
             String spaceId = resolveSpaceId(spaceKey);
             if (spaceId != null) {
-                fetchPages(spaceKey, spaceId, since, documents);
+                fetchCloudPages(spaceKey, spaceId, since, documents);
             }
         }
         return documents;
@@ -75,10 +86,10 @@ public class ConfluenceConnector implements SourceConnector {
         return results.isEmpty() ? null : results.get(0).path("id").asText(null);
     }
 
-    private void fetchPages(String spaceKey, String spaceId, Instant since, List<SourceDocument> documents) {
+    private void fetchCloudPages(String spaceKey, String spaceId, Instant since, List<SourceDocument> documents) {
         String cursor = null;
         while (true) {
-            JsonNode page = listPages(spaceId, cursor);
+            JsonNode page = listCloudPages(spaceId, cursor);
             boolean reachedOlderThanSince = false;
             for (JsonNode result : page.path("results")) {
                 Instant modified = parseInstant(result.path("version").path("createdAt").asText(null));
@@ -86,7 +97,7 @@ public class ConfluenceConnector implements SourceConnector {
                     reachedOlderThanSince = true;
                     break;
                 }
-                documents.add(toDocument(spaceKey, result));
+                documents.add(toCloudDocument(spaceKey, result));
             }
             cursor = reachedOlderThanSince ? null : nextCursor(page);
             if (cursor == null) {
@@ -95,7 +106,7 @@ public class ConfluenceConnector implements SourceConnector {
         }
     }
 
-    private JsonNode listPages(String spaceId, String cursor) {
+    private JsonNode listCloudPages(String spaceId, String cursor) {
         return http.get()
                 .uri(uri -> {
                     uri.path("/api/v2/pages")
@@ -112,7 +123,7 @@ public class ConfluenceConnector implements SourceConnector {
                 .body(JsonNode.class);
     }
 
-    private SourceDocument toDocument(String spaceKey, JsonNode page) {
+    private SourceDocument toCloudDocument(String spaceKey, JsonNode page) {
         JsonNode version = page.path("version");
         String storage = page.path("body").path("storage").path("value").asText("");
         return new SourceDocument(
@@ -127,7 +138,6 @@ public class ConfluenceConnector implements SourceConnector {
                 Map.of("space", spaceKey));
     }
 
-    /** Extrait le cursor de pagination depuis {@code _links.next} (URL relative), ou null. */
     private static String nextCursor(JsonNode page) {
         String next = page.path("_links").path("next").asText(null);
         if (next == null) {
@@ -143,6 +153,52 @@ public class ConfluenceConnector implements SourceConnector {
             cursor = cursor.substring(0, end);
         }
         return URLDecoder.decode(cursor, StandardCharsets.UTF_8);
+    }
+
+    // ---- Data Center / Server : API v1 (CQL) -----------------------------------
+
+    private List<SourceDocument> fetchDataCenter(Instant since) {
+        String cql = "type = page and space in (" + String.join(", ", config.spaces()) + ")";
+        if (since != null) {
+            cql += " and lastModified >= \"" + CQL_DATE.format(since) + "\"";
+        }
+        var documents = new ArrayList<SourceDocument>();
+        int start = 0;
+        while (true) {
+            JsonNode page = searchV1(cql, start);
+            JsonNode results = page.path("results");
+            results.forEach(result -> documents.add(toDataCenterDocument(result)));
+            if (results.size() < PAGE_SIZE) {
+                return documents;
+            }
+            start += PAGE_SIZE;
+        }
+    }
+
+    private JsonNode searchV1(String cql, int start) {
+        return http.get()
+                .uri(uri -> uri.path("/rest/api/content/search")
+                        .queryParam("cql", cql)
+                        .queryParam("expand", "body.storage,version,space")
+                        .queryParam("limit", PAGE_SIZE)
+                        .queryParam("start", start)
+                        .build())
+                .retrieve()
+                .body(JsonNode.class);
+    }
+
+    private SourceDocument toDataCenterDocument(JsonNode page) {
+        JsonNode version = page.path("version");
+        return new SourceDocument(
+                SOURCE,
+                null,
+                page.path("id").asText(),
+                page.path("title").asText(),
+                HtmlText.toText(page.path("body").path("storage").path("value").asText()),
+                config.baseUrl() + page.path("_links").path("webui").asText(),
+                version.path("number").asText(),
+                parseInstant(version.path("when").asText(null)),
+                Map.of("space", page.path("space").path("key").asText()));
     }
 
     private static Instant parseInstant(String value) {
