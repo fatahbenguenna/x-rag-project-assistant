@@ -12,6 +12,7 @@ target/
 
 .env
 team-config.yml
+docker-compose.override.yml
 
 *.log
 .DS_Store
