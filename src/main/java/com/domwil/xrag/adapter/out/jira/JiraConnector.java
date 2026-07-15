@@ -5,8 +5,8 @@ import com.domwil.xrag.adapter.out.atlassian.AtlassianConnection;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
-import tools.jackson.databind.JsonNode;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -14,9 +14,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-/** Adapter Jira (REST API 2, JQL). Sync incrémentale par {@code updated >= ...}. */
+/**
+ * Adapter Jira (REST API v3, JQL). Sync incrémentale par {@code updated >= ...}.
+ * Utilise {@code /rest/api/3/search/jql} avec pagination par {@code nextPageToken} —
+ * l'ancien {@code /rest/api/2/search} a été supprimé par Atlassian (HTTP 410).
+ */
 public class JiraConnector implements SourceConnector {
 
     public static final String SOURCE = "jira";
@@ -61,26 +64,27 @@ public class JiraConnector implements SourceConnector {
         jql += " order by updated asc";
 
         var documents = new ArrayList<SourceDocument>();
-        int startAt = 0;
-        while (true) {
-            JsonNode page = search(jql, startAt);
-            JsonNode issues = page.path("issues");
-            issues.forEach(issue -> documents.add(toDocument(issue)));
-            startAt += issues.size();
-            if (startAt >= page.path("total").asInt() || issues.isEmpty()) {
-                return documents;
-            }
-        }
+        String pageToken = null;
+        do {
+            JsonNode page = search(jql, pageToken);
+            page.path("issues").forEach(issue -> documents.add(toDocument(issue)));
+            pageToken = page.path("nextPageToken").asText(null);
+        } while (pageToken != null && !pageToken.isBlank());
+        return documents;
     }
 
-    private JsonNode search(String jql, int startAt) {
+    private JsonNode search(String jql, String pageToken) {
         return http.get()
-                .uri(uri -> uri.path("/rest/api/2/search")
-                        .queryParam("jql", jql)
-                        .queryParam("fields", FIELDS)
-                        .queryParam("maxResults", PAGE_SIZE)
-                        .queryParam("startAt", startAt)
-                        .build())
+                .uri(uri -> {
+                    uri.path("/rest/api/3/search/jql")
+                            .queryParam("jql", jql)
+                            .queryParam("fields", FIELDS)
+                            .queryParam("maxResults", PAGE_SIZE);
+                    if (pageToken != null && !pageToken.isBlank()) {
+                        uri.queryParam("nextPageToken", pageToken);
+                    }
+                    return uri.build();
+                })
                 .retrieve()
                 .body(JsonNode.class);
     }
@@ -106,7 +110,7 @@ public class JiraConnector implements SourceConnector {
         metadata.put("linkedIssues", List.copyOf(linkedKeys));
 
         String summary = fields.path("summary").asText("");
-        String description = fields.path("description").asText("");
+        String description = extractText(fields.path("description"));
         return new SourceDocument(
                 SOURCE,
                 null,
@@ -119,9 +123,39 @@ public class JiraConnector implements SourceConnector {
                 metadata);
     }
 
+    /**
+     * Extrait le texte plein d'un champ Jira : chaîne simple, ou document ADF (Atlassian
+     * Document Format) tel que renvoyé par l'API v3 pour {@code description}.
+     */
+    private static String extractText(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return "";
+        }
+        if (node.isTextual()) {
+            return node.asText();
+        }
+        if (node.has("text")) {
+            return node.path("text").asText("");
+        }
+        var sb = new StringBuilder();
+        JsonNode content = node.path("content");
+        if (content.isArray()) {
+            for (JsonNode child : content) {
+                String text = extractText(child);
+                if (!text.isEmpty()) {
+                    if (sb.length() > 0) {
+                        sb.append(' ');
+                    }
+                    sb.append(text);
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     private static Instant parseInstant(String value) {
         try {
-            // Format Jira : 2024-05-13T10:12:00.000+0200
+            // Format Jira : 2026-07-14T17:20:16.158+0200
             return value == null ? null : java.time.OffsetDateTime
                     .parse(value, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ"))
                     .toInstant();
