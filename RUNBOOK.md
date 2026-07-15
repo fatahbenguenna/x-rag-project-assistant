@@ -44,8 +44,11 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 | Postgres | 🐧 | Choisir un mot de passe | `POSTGRES_PASSWORD=...` |
 
 > Le mode cookie est un mode **dev/validation** : il expire avec la session (voir §8 pour le
-> rafraîchissement). Cible pérenne : compte de service → mode basic (`*_USER` + `*_TOKEN`),
-> sans autre changement. Ne jamais coller ces valeurs ailleurs que dans le `.env`.
+> rafraîchissement). Cible pérenne selon la plateforme, sans autre changement que le `.env` :
+> **Cloud** → OAuth 2.0 client credentials (`*_OAUTH_CLIENT_ID` + `*_OAUTH_CLIENT_SECRET`,
+> recommandé) ou token de compte de service scopé (`*_TOKEN` seul, `*_USER` vide) ; **Data
+> Center** → compte de service basic (`*_USER` + `*_TOKEN`) ou PAT (`*_TOKEN` seul). Les cinq
+> modes sont détaillés dans `.env.example`. Ne jamais coller ces valeurs ailleurs que dans le `.env`.
 
 ### Garanties lecture seule (cookies personnels avec droits d'écriture)
 

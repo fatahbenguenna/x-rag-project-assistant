@@ -101,17 +101,26 @@ Notes WSL :
 
 ### Authentification Confluence/Jira
 
-Trois modes, résolus depuis `.env` par ordre de priorité (voir `.env.example`) :
+Cinq modes, résolus depuis `.env` par ordre de priorité (voir `.env.example` pour le détail) :
 
-1. **cookie** (`CONFLUENCE_COOKIE` / `JIRA_COOKIE`) : chaîne `Cookie` brute copiée d'une
-   session navigateur authentifiée (SSO, certificat SoftID…). Mode **dev/validation** —
-   expire avec la session ; le health check du batch signale l'expiration.
-2. **basic** (`CONFLUENCE_USER` + `CONFLUENCE_TOKEN`, idem Jira) : compte de service
-   Data Center, ou Atlassian Cloud (email + API token).
-3. **bearer** (`CONFLUENCE_TOKEN` seul, défaut) : PAT Data Center.
+1. **cookie** (`*_COOKIE`) : chaîne `Cookie` brute d'une session navigateur authentifiée
+   (SSO, certificat SoftID…). Mode **dev/validation** (expire avec la session) et **seul
+   mode possible pour du self-hosted** sans API token.
+2. **oauth** (`*_OAUTH_CLIENT_ID` + `*_OAUTH_CLIENT_SECRET`) : OAuth 2.0 *client credentials*
+   d'un compte de service Atlassian Cloud. **Recommandé en production** — aucune interaction
+   humaine, access token rafraîchi automatiquement (~60 min). Appels routés par `api.atlassian.com`.
+3. **basic** (`*_USER` + `*_TOKEN`) : compte de service Data Center, ou API token *classique*
+   Atlassian Cloud (email + token).
+4. **scoped** (`*_TOKEN` seul sur un site Cloud `*.atlassian.net`) : API token d'un compte de
+   service. Appels routés par `api.atlassian.com`. Le token doit porter les scopes read
+   Confluence **et** Jira ; laisser `*_USER` vide.
+5. **bearer** (`*_TOKEN` seul sur du self-hosted) : PAT Data Center.
 
-Si l'instance est servie sous un context path (`https://host/confluence`), l'inclure
-dans le `base-url` du `team-config.yml`. GitLab reste en PAT (`GITLAB_TOKEN`).
+Les modes **oauth** et **scoped** découvrent le `cloudId` du tenant automatiquement
+(`{site}/_edge/tenant_info`). Côté `team-config.yml`, le `base-url` d'un site Cloud est
+`https://votre-org.atlassian.net/wiki` (Confluence) et `https://votre-org.atlassian.net`
+(Jira) ; pour du self-hosted sous context path (`https://host/confluence`), l'inclure dans
+le `base-url`. GitLab reste en PAT (`GITLAB_TOKEN`).
 
 **Lecture seule garantie** : les connecteurs n'émettent que des GET, et un garde-fou
 structurel (`ReadOnlyHttpGuard`) rejette toute requête d'écriture avant envoi — même des
