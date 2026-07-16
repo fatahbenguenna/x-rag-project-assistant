@@ -18,9 +18,11 @@ Complémentaire de `README.md` (vue d'ensemble) et `VALIDATION.md` (critères de
 | 1.3 | 🐧 | Vérifier l'outillage : `docker version && docker compose version && git --version && curl --version` |
 | 1.4 | 🪟 | Avoir une session SSO fonctionnelle sur Confluence et Jira (SoftID), et un compte GitLab |
 
-> **Ollama : rien à installer**, ni côté Windows ni côté WSL — le compose l'embarque en
-> conteneur. Si l'application Ollama Windows est installée, **quittez-la** (icône barre des
-> tâches) pendant l'utilisation de la pile : port 11434 et RAM en double sinon.
+> **Ollama : trois hébergements possibles**, au choix dans `.env` — en **conteneur**
+> (défaut, rien à installer, CPU), **natif Windows** (GPU) ou **WSL** (GPU NVIDIA via CUDA).
+> Voir « Ollama : conteneur, natif Windows, ou WSL — et comment permuter » au §4. En mode
+> conteneur, si l'app Ollama Windows est installée, **quittez-la** (barre des tâches) :
+> sinon port 11434 et RAM en double.
 
 ## 2. Installation (une seule fois) — 🐧
 
@@ -97,14 +99,40 @@ docker compose ps
 #   xrag-api        Up
 #   xrag-webui      Up               (seulement si COMPOSE_PROFILES contient « ui »)
 
-# Puis télécharger les modèles DANS le conteneur Ollama (~6 Go au total, une seule
-# fois — persistés dans le volume ollama-models) :
+# Puis télécharger les modèles (~5 Go, une seule fois). EN MODE CONTENEUR :
 docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
-docker exec xrag-ollama ollama pull qwen2.5:3b
 docker exec xrag-ollama ollama pull bge-m3
+# En mode Ollama natif Windows / WSL : les MÊMES pulls SANS « docker exec xrag-ollama »,
+# directement sur l'hôte (voir la section « Ollama : conteneur, natif Windows, ou WSL »).
 ```
 
 Enchaîner directement sur le préflight (§5) avant toute indexation.
+
+### Ollama : conteneur, natif Windows, ou WSL — et comment permuter
+
+Le RAG appelle Ollama via `OLLAMA_BASE_URL` (`.env`). Le choix de l'hébergement se fait
+**entièrement dans `.env`**, sans éditer `docker-compose.yml`.
+
+| Mode | Quand | `.env` | Où lancer Ollama / puller les modèles |
+|---|---|---|---|
+| **Conteneur** | Portable, pas de GPU | `COMPOSE_PROFILES=ollama-docker` · `OLLAMA_BASE_URL=` (vide) | Rien à installer. `docker exec xrag-ollama ollama pull …` |
+| **Natif Windows** | GPU sur Windows | `COMPOSE_PROFILES=` (sans `ollama-docker`) · `OLLAMA_BASE_URL=http://host.docker.internal:11434` | 🪟 Installer Ollama for Windows · `setx OLLAMA_HOST 0.0.0.0` puis relancer Ollama · `ollama pull …` (PowerShell) |
+| **WSL** | GPU NVIDIA (CUDA) dans WSL | idem natif : `COMPOSE_PROFILES=` · `OLLAMA_BASE_URL=http://host.docker.internal:11434` | 🐧 `curl -fsSL https://ollama.com/install.sh \| sh` · lancer avec `OLLAMA_HOST=0.0.0.0 ollama serve` · `ollama pull …` (WSL) |
+
+**Natif Windows et WSL partagent le même `.env`** (`host.docker.internal:11434`) : vus depuis
+le conteneur rag-api, les deux sont « l'hôte ». Un seul peut occuper le port 11434 à la fois.
+
+**Permuter natif Windows ↔ WSL** (le `.env` ne change pas) :
+1. Arrêter l'Ollama en cours (🪟 quitter l'app Ollama / 🐧 `pkill ollama`) — libère le port 11434.
+2. Démarrer l'Ollama voulu **en écoutant `0.0.0.0`** (sinon injoignable depuis le conteneur).
+3. `docker compose restart rag-api`.
+4. Vérifier : `./scripts/check-connections.sh` (ligne Ollama verte).
+
+**Permuter conteneur ↔ natif/WSL** : éditer `.env` (`COMPOSE_PROFILES` + `OLLAMA_BASE_URL`),
+puis `docker compose up -d` (ajoute/retire le conteneur `ollama` et recrée `rag-api`).
+
+> Si `host.docker.internal:11434` ne joint pas l'Ollama WSL (rare) : 🐧 `hostname -I` →
+> `OLLAMA_BASE_URL=http://<ip-wsl>:11434` (attention, l'IP de la distro peut changer au reboot).
 
 > **Open WebUI est optionnel** : le RAG fonctionne entièrement par l'API (`:8080`). L'UI
 > (`http://localhost:3000`) est l'interface type ChatGPT pour les utilisateurs humains,

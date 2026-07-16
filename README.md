@@ -78,10 +78,9 @@ cd x-rag-project-assistant
 cp .env.example .env && nano .env                          # tokens/cookies
 cp team-config.example.yml team-config.yml && nano team-config.yml
 
-# 3. Démarrer la pile et tirer les modèles
+# 3. Démarrer la pile et tirer les modèles (mode conteneur par défaut, cf. .env COMPOSE_PROFILES)
 docker compose up -d
 docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
-docker exec xrag-ollama ollama pull qwen2.5:3b
 docker exec xrag-ollama ollama pull bge-m3
 
 # 4. Préflight : toutes les connexions vertes avant d'indexer
