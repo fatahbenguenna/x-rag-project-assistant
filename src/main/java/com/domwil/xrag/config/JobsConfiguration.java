@@ -2,6 +2,7 @@ package com.domwil.xrag.config;
 
 import com.domwil.xrag.application.AliasResolver;
 import com.domwil.xrag.application.GraphQualityService;
+import com.domwil.xrag.application.IndexingProgressTracker;
 import com.domwil.xrag.application.IngestionService;
 import com.domwil.xrag.application.NightlyBatchService;
 import com.domwil.xrag.application.ProjectSheetService;
@@ -72,8 +73,9 @@ public class JobsConfiguration implements SchedulingConfigurer {
     @Bean
     public SyncService syncService(ConnectorRegistry connectors, IngestionService ingestion,
                                    SyncStateRepository syncState, MergeRequestRepository mergeRequests,
-                                   MergeRequestGraphMapper mrMapper, GraphRepository graph) {
-        return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph);
+                                   MergeRequestGraphMapper mrMapper, GraphRepository graph,
+                                   IndexingProgressTracker progressTracker) {
+        return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph, progressTracker);
     }
 
     @Bean

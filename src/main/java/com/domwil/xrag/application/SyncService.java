@@ -30,23 +30,31 @@ public class SyncService {
     private final MergeRequestRepository mergeRequests;
     private final MergeRequestGraphMapper mrMapper;
     private final GraphRepository graph;
+    private final IndexingProgressTracker progress;
 
     public SyncService(ConnectorRegistry connectors, IngestionService ingestion,
                        SyncStateRepository syncState, MergeRequestRepository mergeRequests,
-                       MergeRequestGraphMapper mrMapper, GraphRepository graph) {
+                       MergeRequestGraphMapper mrMapper, GraphRepository graph,
+                       IndexingProgressTracker progress) {
         this.connectors = connectors;
         this.ingestion = ingestion;
         this.syncState = syncState;
         this.mergeRequests = mergeRequests;
         this.mrMapper = mrMapper;
         this.graph = graph;
+        this.progress = progress;
     }
 
     public void syncAll(boolean full) {
-        for (SourceConnector connector : connectors.documentConnectors()) {
-            syncSource(connector, full);
+        progress.startRun(full);
+        try {
+            for (SourceConnector connector : connectors.documentConnectors()) {
+                syncSource(connector, full);
+            }
+            connectors.mergeRequestConnector().ifPresent(connector -> syncMergeRequests(connector, full));
+        } finally {
+            progress.finishRun();
         }
-        connectors.mergeRequestConnector().ifPresent(connector -> syncMergeRequests(connector, full));
     }
 
     public void syncSource(String source, boolean full) {
@@ -57,7 +65,9 @@ public class SyncService {
 
     private void syncSource(SourceConnector connector, boolean full) {
         Instant startedAt = Instant.now();
-        Instant since = full ? null : syncState.lastSync(connector.source()).orElse(null);
+        String source = connector.source();
+        progress.startSource(source);
+        Instant since = full ? null : syncState.lastSync(source).orElse(null);
         try {
             var documents = connector.fetchChangedSince(since);
             int indexed = 0;
@@ -66,12 +76,14 @@ public class SyncService {
                     indexed++;
                 }
             }
-            syncState.record(connector.source(), startedAt, "OK (%d/%d indexés)".formatted(indexed, documents.size()));
+            syncState.record(source, startedAt, "OK (%d/%d indexés)".formatted(indexed, documents.size()));
+            progress.finishSource(source, "OK", indexed, documents.size());
             log.info("Sync {} : {}/{} documents (ré)indexés depuis {}",
-                    connector.source(), indexed, documents.size(), since == null ? "toujours" : since);
+                    source, indexed, documents.size(), since == null ? "toujours" : since);
         } catch (Exception e) {
-            syncState.record(connector.source(), startedAt, "ERREUR " + e.getMessage());
-            log.error("Sync {} en échec — l'index précédent reste servi", connector.source(), e);
+            syncState.record(source, startedAt, "ERREUR " + e.getMessage());
+            progress.finishSource(source, "ERREUR " + e.getMessage(), 0, 0);
+            log.error("Sync {} en échec — l'index précédent reste servi", source, e);
         }
     }
 
@@ -81,6 +93,7 @@ public class SyncService {
 
     public void syncMergeRequests(MergeRequestConnector connector, boolean full) {
         Instant startedAt = Instant.now();
+        progress.startSource(MR_SOURCE);
         Instant since = full ? null : mergeRequests.mostRecentUpdate().orElse(null);
         try {
             List<MergeRequestMeta> mrs = connector.fetchUpdatedAfter(since);
@@ -89,9 +102,11 @@ public class SyncService {
                 graph.upsert(mrMapper.map(mr));
             }
             syncState.record(MR_SOURCE, startedAt, "OK (%d MRs)".formatted(mrs.size()));
+            progress.finishSource(MR_SOURCE, "OK", mrs.size(), mrs.size());
             log.info("Sync MRs : {} mises à jour depuis {}", mrs.size(), since == null ? "toujours" : since);
         } catch (Exception e) {
             syncState.record(MR_SOURCE, startedAt, "ERREUR " + e.getMessage());
+            progress.finishSource(MR_SOURCE, "ERREUR " + e.getMessage(), 0, 0);
             log.error("Sync MRs en échec", e);
         }
     }
