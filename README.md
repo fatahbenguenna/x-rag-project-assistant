@@ -45,7 +45,9 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
    d'authentification que l'application. Tout doit être vert avant d'indexer.
 7. **Indexation initiale** : `./bootstrap.sh` (3 à 6 h la première nuit selon le volume).
 8. **Vérifier** : le smoke test s'exécute en fin de bootstrap ; l'API répond sur
-   `http://localhost:8080`, l'UI (si activée) sur `http://localhost:3000`.
+   `http://localhost:8080`, l'UI (si activée) sur `http://localhost:3000`. Le **dashboard
+   de monitoring de l'indexation** est servi sur `http://localhost:8080/dashboard.html`
+   (chunks par source, tâche en cours, temps écoulé, problèmes rencontrés).
 
 Mises à jour : `docker compose pull && docker compose up -d` (Liquibase migre au démarrage).
 

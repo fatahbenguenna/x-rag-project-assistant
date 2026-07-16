@@ -130,8 +130,14 @@ d'indexer — sinon voir §9.
 ./bootstrap.sh             # 3 à 6 h selon le volume — lancer en fin de journée
 ```
 
-Suivi pendant l'indexation : `curl -s localhost:8080/api/admin/status` (compteurs en
-croissance). Interruptible sans risque : tout est en upsert à clés stables, relancer reprend
+Suivi pendant l'indexation :
+- **Dashboard visuel** (recommandé) : `http://localhost:8080/dashboard.html` — chunks par
+  source, source en cours, temps écoulé, problèmes rencontrés et dernière sync par source,
+  auto-rafraîchi toutes les 3 s.
+- En ligne de commande : `curl -s localhost:8080/api/admin/status` (compteurs bruts) ou
+  `curl -s localhost:8080/api/admin/indexing-status` (statut détaillé JSON servant le dashboard).
+
+Interruptible sans risque : tout est en upsert à clés stables, relancer reprend
 où c'était. Le smoke test s'exécute automatiquement à la fin.
 
 ## 7. Accéder au service
@@ -141,7 +147,8 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | **Chat (UI)** | 🪟 navigateur | `http://localhost:3000` (si `--profile ui`) — modèle `xrag-<team>` ; localhost est partagé Windows↔WSL, rien à configurer |
 | Chat (CLI, streamé) | 🐧 | `curl -N -X POST localhost:8080/api/chat -H 'Content-Type: application/json' -d '{"question":"explique-moi le projet X"}'` |
 | Santé | 🪟/🐧 | `http://localhost:8080/actuator/health` → `{"status":"UP"}` |
-| État de l'index | 🐧 | `curl -s localhost:8080/api/admin/status` |
+| **Dashboard d'indexation** | 🪟 navigateur | `http://localhost:8080/dashboard.html` — monitoring temps quasi-réel (chunks/source, tâche en cours, temps écoulé, problèmes) |
+| État de l'index | 🐧 | `curl -s localhost:8080/api/admin/status` (brut) ou `.../api/admin/indexing-status` (détaillé) |
 | Qualité du graphe | 🐧 | `curl -s localhost:8080/api/admin/graph-quality` (verdict + trous éventuels) |
 | Batch à la demande | 🐧 | `curl -X POST localhost:8080/api/admin/nightly` |
 | Latences vs cibles | 🐧 | `./scripts/measure-latency.sh` |
