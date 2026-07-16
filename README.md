@@ -36,10 +36,15 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
    Les secrets vont dans `.env`, jamais dans le YAML.
 3. **Configuration d'équipe** : `cp team-config.example.yml team-config.yml` puis
    déclarer vos espaces Confluence, groupe GitLab, projets Jira et alias.
-4. **Démarrer** : `docker compose up -d` (ajouter `--profile ui` pour Open WebUI).
+4. **Démarrer** : `docker compose up -d`. Le mode Ollama (conteneur portable, natif
+   hôte à GPU, ou WSL) et l'UI se choisissent dans `.env` via `OLLAMA_BASE_URL` et
+   `COMPOSE_PROFILES` — voir `.env.example`. Défaut : Ollama en conteneur ; ajouter
+   `ui` à `COMPOSE_PROFILES` pour Open WebUI.
 5. **Modèles** :
-   `docker exec xrag-ollama ollama pull qwen2.5:7b-instruct` et
-   `docker exec xrag-ollama ollama pull bge-m3`.
+   - Ollama en conteneur : `docker exec xrag-ollama ollama pull qwen2.5:7b-instruct`
+     et `docker exec xrag-ollama ollama pull bge-m3`.
+   - Ollama natif hôte / WSL : sur l'hôte, `ollama pull qwen2.5:7b-instruct` et
+     `ollama pull bge-m3`.
 6. **Préflight** : `./scripts/check-connections.sh` — teste Postgres, Ollama (+ modèles),
    GitLab, Confluence et Jira avec les credentials du `.env` et la même logique
    d'authentification que l'application. Tout doit être vert avant d'indexer.

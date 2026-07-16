@@ -1,7 +1,12 @@
 services:
+  # Ollama EN CONTENEUR (portable, CPU). Optionnel : activé par le profil « ollama-docker ».
+  #   - Docker (défaut portable)   : COMPOSE_PROFILES=ollama-docker (voir .env) — l'API cible http://ollama:11434
+  #   - Ollama natif hôte (GPU) ou WSL : ne PAS activer ce profil + OLLAMA_BASE_URL=http://host.docker.internal:11434
+  # Ainsi un seul .env choisit le mode, sans éditer ce fichier ni conflit de port 11434.
   ollama:
     image: ollama/ollama:latest
     container_name: xrag-ollama
+    profiles: ["ollama-docker"]
     volumes:
       - ollama-models:/root/.ollama
       # CA racine d'entreprise (proxy avec interception TLS) — voir CORPORATE_CA
@@ -53,17 +58,22 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
-      OLLAMA_BASE_URL: http://ollama:11434
+      # Où l'API trouve Ollama. Défaut = conteneur (profil ollama-docker). Pour un Ollama
+      # natif hôte (Mac GPU Metal / Windows) ou WSL : OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # dans .env (voir .env.example). host.docker.internal résout l'hôte grâce à extra_hosts.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       TEAM_CONFIG: /config/team-config.yml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./team-config.yml:/config/team-config.yml:ro
     ports:
       - "8080:8080"
+    # Pas de depends_on ollama : le conteneur Ollama est optionnel (profil), et en mode
+    # natif/WSL il n'existe pas. L'API se connecte à Ollama à la première requête.
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_started
     restart: unless-stopped
 
   # UI optionnelle : docker compose --profile ui up -d
