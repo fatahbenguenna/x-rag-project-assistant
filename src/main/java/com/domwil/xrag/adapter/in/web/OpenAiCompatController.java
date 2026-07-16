@@ -2,6 +2,7 @@ package com.domwil.xrag.adapter.in.web;
 
 import com.domwil.xrag.application.RagChatService;
 import com.domwil.xrag.config.TeamConfig;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Façade OpenAI-compatible minimale ({@code /v1}) pour brancher Open WebUI
@@ -25,7 +27,9 @@ import java.util.UUID;
  * est l'assistant d'équipe complet : graphe + retrieval hybride + tools.
  *
  * <p>Stateless : seule la dernière question utilisateur est traitée, le
- * contexte vient du RAG, pas de l'historique de conversation.
+ * contexte vient du RAG, pas de l'historique de conversation. La réponse porte
+ * le champ {@code usage} (tokens prompt/réponse) que les clients (Open WebUI)
+ * affichent avec le temps de réponse.
  */
 @RestController
 @RequestMapping("/v1")
@@ -59,13 +63,19 @@ public class OpenAiCompatController {
     public record ChunkChoice(int index, Delta delta, String finish_reason) {
     }
 
-    public record Chunk(String id, String object, long created, String model, List<ChunkChoice> choices) {
+    public record Chunk(String id, String object, long created, String model,
+                        List<ChunkChoice> choices, Usage usage) {
     }
 
     public record Choice(int index, Message message, String finish_reason) {
     }
 
-    public record ChatCompletion(String id, String object, long created, String model, List<Choice> choices) {
+    public record ChatCompletion(String id, String object, long created, String model,
+                                 List<Choice> choices, Usage usage) {
+    }
+
+    /** Tokens consommés, au format OpenAI ({@code usage}). */
+    public record Usage(Integer prompt_tokens, Integer completion_tokens, Integer total_tokens) {
     }
 
     @GetMapping("/models")
@@ -78,19 +88,25 @@ public class OpenAiCompatController {
         String question = lastUserMessage(request);
         String id = "chatcmpl-" + UUID.randomUUID();
         long created = Instant.now().getEpochSecond();
+        var usage = new AtomicReference<Usage>();
+
+        Flux<ChatResponse> responses = ragChatService.streamWithUsage(question, null)
+                .doOnNext(response -> captureUsage(response, usage));
 
         if (Boolean.TRUE.equals(request.stream())) {
             Flux<String> events = Flux.concat(
-                    Flux.just(chunk(id, created, new Delta("assistant", ""), null)),
-                    ragChatService.answer(question, null)
-                            .map(token -> chunk(id, created, new Delta(null, token), null)),
-                    Flux.just(chunk(id, created, new Delta(null, null), "stop"), "[DONE]"));
+                    Flux.just(chunk(id, created, new Delta("assistant", ""), null, null)),
+                    responses.map(response ->
+                            chunk(id, created, new Delta(null, RagChatService.contentOf(response)), null, null)),
+                    Flux.defer(() -> Flux.just(
+                            chunk(id, created, new Delta(null, null), "stop", usage.get()), "[DONE]")));
             return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(events);
         }
-        Flux<String> completion = ragChatService.answer(question, null)
+        Flux<String> completion = responses
+                .map(RagChatService::contentOf)
                 .collect(StringBuilder::new, StringBuilder::append)
                 .map(answer -> json.writeValueAsString(new ChatCompletion(id, "chat.completion", created, modelId,
-                        List.of(new Choice(0, new Message("assistant", answer.toString()), "stop")))))
+                        List.of(new Choice(0, new Message("assistant", answer.toString()), "stop")), usage.get())))
                 .flux();
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(completion);
     }
@@ -101,9 +117,19 @@ public class OpenAiCompatController {
                 .body(Map.of("error", Map.of("message", e.getMessage(), "type", "invalid_request_error")));
     }
 
-    private String chunk(String id, long created, Delta delta, String finishReason) {
+    private String chunk(String id, long created, Delta delta, String finishReason, Usage usage) {
         return json.writeValueAsString(new Chunk(id, "chat.completion.chunk", created,
-                modelId, List.of(new ChunkChoice(0, delta, finishReason))));
+                modelId, List.of(new ChunkChoice(0, delta, finishReason)), usage));
+    }
+
+    /** Mémorise l'usage dès qu'un fragment le porte (Ollama le fournit sur le fragment final). */
+    private static void captureUsage(ChatResponse response, AtomicReference<Usage> ref) {
+        var metadata = response.getMetadata();
+        var providerUsage = metadata == null ? null : metadata.getUsage();
+        if (providerUsage != null && providerUsage.getTotalTokens() != null && providerUsage.getTotalTokens() > 0) {
+            ref.set(new Usage(providerUsage.getPromptTokens(),
+                    providerUsage.getCompletionTokens(), providerUsage.getTotalTokens()));
+        }
     }
 
     private static String lastUserMessage(ChatCompletionRequest request) {

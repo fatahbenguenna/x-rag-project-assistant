@@ -7,6 +7,7 @@ import com.domwil.xrag.domain.port.GraphSearchRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.embedding.EmbeddingModel;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
@@ -25,8 +26,8 @@ public class RagChatService {
     private static final Logger log = LoggerFactory.getLogger(RagChatService.class);
 
     private static final int GRAPH_DEPTH = 2;
-    private static final int CHUNK_LIMIT = 8;
-    private static final int CHUNK_EXCERPT_CHARS = 1500;
+    private static final int CHUNK_LIMIT = 4;
+    private static final int CHUNK_EXCERPT_CHARS = 900;
 
     private static final String USER_TEMPLATE = """
             Contexte issu du graphe de connaissances de l'équipe (relations extraites du code, \
@@ -65,6 +66,16 @@ public class RagChatService {
     }
 
     public Flux<String> answer(String question, String project) {
+        return streamWithUsage(question, project)
+                .map(RagChatService::contentOf)
+                .filter(token -> !token.isEmpty());
+    }
+
+    /**
+     * Comme {@link #answer}, mais expose le {@link ChatResponse} complet — dont les
+     * métadonnées d'usage (tokens prompt/réponse), consommées par la façade OpenAI-compatible.
+     */
+    public Flux<ChatResponse> streamWithUsage(String question, String project) {
         // Le retrieval (graphe + embedding + recherche hybride) est bloquant : JDBC pour
         // Postgres, RestClient pour l'embedding Ollama. L'endpoint chat étant réactif
         // (WebFlux), on exécute tout le pipeline sur un scheduler élastique — sinon Reactor
@@ -73,7 +84,16 @@ public class RagChatService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private Flux<String> retrieveAndStream(String question, String project) {
+    /** Texte d'un fragment de réponse ({@code ""} s'il n'en porte pas, ex. le fragment final). */
+    public static String contentOf(ChatResponse response) {
+        if (response.getResult() == null || response.getResult().getOutput() == null) {
+            return "";
+        }
+        String text = response.getResult().getOutput().getText();
+        return text == null ? "" : text;
+    }
+
+    private Flux<ChatResponse> retrieveAndStream(String question, String project) {
         Set<String> seeds = entityDetector.detectNodeIds(question);
         Subgraph subgraph = graphSearch.neighborhood(seeds, GRAPH_DEPTH);
         float[] embedding = embeddingModel.embed(question);
@@ -94,7 +114,7 @@ public class RagChatService {
         // peu fiables en function calling et le descriptif n'en a pas besoin).
         spec = routed != null ? spec.options(routed) : spec.tools(mergeRequestTools);
         return spec.stream()
-                .content();
+                .chatResponse();
     }
 
     private static String formatChunks(List<ScoredChunk> retrieved) {
