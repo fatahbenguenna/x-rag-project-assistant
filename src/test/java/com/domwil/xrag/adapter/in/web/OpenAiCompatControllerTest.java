@@ -29,7 +29,7 @@ class OpenAiCompatControllerTest {
     private static TeamConfig config() {
         return new TeamConfig("passerelle",
                 new TeamConfig.Llm("ollama", "qwen2.5:7b-instruct", null, null),
-                new TeamConfig.Sources(null, null, null), null, null, null);
+                new TeamConfig.Sources(null, null, null), null, null, null, null);
     }
 
     private static ChatResponse fragment(String text) {

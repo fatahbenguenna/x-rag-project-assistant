@@ -69,6 +69,61 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
     }
 
     @Override
+    public List<MergeRequestMeta> search(List<List<String>> concepts, int limit) {
+        if (concepts == null || concepts.isEmpty()) {
+            return List.of();
+        }
+        // Un concept dans le TITRE pèse 3, dans le corps (description/labels/branches) pèse 1 :
+        // sinon un doc de suivi récent qui cite tous les noms d'apps supplante la MR qui
+        // TRAITE réellement du sujet (match noyé dans une longue description). Match à
+        // frontière de mot (« pos » retrouve fps-pos mais pas « compose »). Chaque concept
+        // consomme 2 placeholders (regex titre puis regex corps).
+        String scoreExpr = concepts.stream()
+                .map(c -> "(CASE WHEN base.title_hay ~* ? THEN 3 ELSE 0 END "
+                        + "+ CASE WHEN base.body_hay ~* ? THEN 1 ELSE 0 END)")
+                .collect(java.util.stream.Collectors.joining(" + "));
+        String sql = """
+                SELECT scored.* FROM (
+                    SELECT base.*, (%s) AS match_score FROM (
+                        SELECT m.*,
+                            lower(coalesce(m.title, '')) AS title_hay,
+                            lower(
+                                coalesce(m.description, '') || ' '
+                                || coalesce(array_to_string(m.labels, ' '), '') || ' '
+                                || coalesce(m.source_branch, '') || ' ' || coalesce(m.target_branch, '')
+                            ) AS body_hay
+                        FROM merge_requests m
+                    ) base
+                ) scored
+                WHERE scored.match_score > 0
+                ORDER BY scored.match_score DESC, scored.updated_at DESC NULLS LAST
+                LIMIT ?
+                """.formatted(scoreExpr);
+        Object[] params = new Object[concepts.size() * 2 + 1];
+        int p = 0;
+        for (List<String> forms : concepts) {
+            String regex = conceptRegex(forms);
+            params[p++] = regex; // titre (poids 3)
+            params[p++] = regex; // corps (poids 1)
+        }
+        params[p] = limit;
+        return jdbc.query(sql, ROW_MAPPER, params);
+    }
+
+    /** Regex POSIX d'un concept : {@code \m(forme1|forme2|…)\M} (frontière de mot, formes échappées). */
+    private static String conceptRegex(List<String> forms) {
+        String alternation = forms.stream()
+                .map(JdbcMergeRequestRepository::escapeRegex)
+                .collect(java.util.stream.Collectors.joining("|"));
+        return "\\m(" + alternation + ")\\M";
+    }
+
+    /** Échappe les métacaractères ERE ; l'espace et le tiret restent littéraux. */
+    private static String escapeRegex(String form) {
+        return form.replaceAll("([.\\\\+*?\\[\\]^$(){}|])", "\\\\$1");
+    }
+
+    @Override
     public long count(String state) {
         Long count = jdbc.queryForObject(
                 "SELECT count(*) FROM merge_requests WHERE (?::text = 'all' OR state = ?)",
