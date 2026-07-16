@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Set;
@@ -64,6 +65,15 @@ public class RagChatService {
     }
 
     public Flux<String> answer(String question, String project) {
+        // Le retrieval (graphe + embedding + recherche hybride) est bloquant : JDBC pour
+        // Postgres, RestClient pour l'embedding Ollama. L'endpoint chat étant réactif
+        // (WebFlux), on exécute tout le pipeline sur un scheduler élastique — sinon Reactor
+        // rejette le block() sur le thread reactor-http-nio (erreur 500).
+        return Flux.defer(() -> retrieveAndStream(question, project))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private Flux<String> retrieveAndStream(String question, String project) {
         Set<String> seeds = entityDetector.detectNodeIds(question);
         Subgraph subgraph = graphSearch.neighborhood(seeds, GRAPH_DEPTH);
         float[] embedding = embeddingModel.embed(question);
