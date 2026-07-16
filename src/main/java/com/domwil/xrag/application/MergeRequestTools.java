@@ -37,6 +37,24 @@ public class MergeRequestTools {
         return results.stream().map(MergeRequestTools::format).collect(Collectors.joining("\n"));
     }
 
+    @Tool(description = """
+            Recherche les merge requests GitLab par sujet / mot-clé (nom de projet, composant,
+            fonctionnalité — ex. « KDS », « caisse », « multi-tenant », « onboarding »). À utiliser
+            pour toute question du type « quelles MRs concernent X ? », « liste les PR liées à Y »,
+            « y a-t-il eu des MRs sur Z ? ». Cherche dans le titre, la description, les labels et les
+            branches ; retourne les MRs correspondantes, les plus pertinentes d'abord.""")
+    public String searchMergeRequests(
+            @ToolParam(description = "Termes distinctifs du sujet, séparés par des espaces (ex. « caisse KDS », "
+                    + "« onboarding client »). Donner les mots-clés, pas une phrase complète.") String keywords,
+            @ToolParam(description = "Nombre maximum de résultats (20 par défaut)", required = false) Integer limit) {
+        var results = mergeRequests.search(keywords,
+                limit == null || limit < 1 ? 20 : Math.min(limit, 50));
+        if (results.isEmpty()) {
+            return "Aucune merge request ne mentionne « " + keywords + " ».";
+        }
+        return results.stream().map(MergeRequestTools::format).collect(Collectors.joining("\n"));
+    }
+
     @Tool(description = "Compte les merge requests GitLab par état (opened, merged, closed ou all).")
     public String countMergeRequests(
             @ToolParam(description = "État : opened, merged, closed ou all") String state) {

@@ -18,6 +18,14 @@ public interface MergeRequestRepository {
      */
     List<MergeRequestMeta> find(String state, String sortColumn, boolean ascending, int limit);
 
+    /**
+     * Recherche les MRs par sujet, sur titre + description + labels + branches. Les
+     * termes du {@code query} sont matchés en OU ; les MRs qui en mentionnent le plus
+     * ressortent en premier. Alimente le tool {@code searchMergeRequests} pour les
+     * questions du type « quelles MRs concernent X ? ».
+     */
+    List<MergeRequestMeta> search(String query, int limit);
+
     long count(String state);
 
     /** Curseur pour la sync incrémentale (updated_after). */

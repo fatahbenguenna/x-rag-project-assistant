@@ -59,8 +59,8 @@ des credentials qui auraient tous les droits :
    (recherche CQL, JQL, arborescences et fichiers git). Le seul POST sortant de
    l'application est la notification (`NOTIFY_WEBHOOK_URL`), envoyée **sans** les
    credentials des plateformes. Les tools exposés au LLM (`listMergeRequests`,
-   `countMergeRequests`) lisent la base locale — le LLM n'a aucun outil vers les
-   plateformes.
+   `searchMergeRequests`, `countMergeRequests`) lisent la base locale — le LLM n'a
+   aucun outil vers les plateformes.
 2. **Garde-fou structurel** (`ReadOnlyHttpGuard`) : un intercepteur HTTP câblé dans les
    trois connecteurs **rejette toute requête non GET/HEAD avant qu'elle ne parte sur le
    réseau**. Même un bug ou une régression future ne peut pas produire d'écriture avec
