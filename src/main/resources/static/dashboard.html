@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>x-rag — Monitoring de l'indexation</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --bg-grid: #10161e;
+      --panel: #121a24;
+      --panel-2: #0e151d;
+      --border: #1e2a38;
+      --border-soft: #17212d;
+      --ink: #e6edf3;
+      --ink-dim: #8a9bad;
+      --ink-faint: #566578;
+      --accent: #38bdf8;
+      --accent-dim: #1e5f7a;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --err: #f87171;
+      --run: #38bdf8;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, "Liberation Mono", monospace;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(var(--bg-grid) 1px, transparent 1px) 0 0 / 100% 34px,
+        radial-gradient(1200px 600px at 80% -10%, #13202c 0%, transparent 60%),
+        var(--bg);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    a { color: var(--accent); }
+
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 20px 64px; }
+
+    /* Header */
+    header {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px;
+      padding-bottom: 18px; margin-bottom: 22px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: baseline; gap: 12px; }
+    .brand h1 {
+      margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .brand .tag {
+      color: var(--ink-faint); font-size: 11px; letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .brand .dot { color: var(--accent); }
+
+    .head-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 9px;
+      padding: 7px 14px; border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .status-pill .led {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--ink-faint); box-shadow: 0 0 0 0 transparent;
+    }
+    .status-pill.running { border-color: var(--accent-dim); color: var(--accent); }
+    .status-pill.running .led {
+      background: var(--run);
+      animation: pulse 1.4s ease-out infinite;
+    }
+    .status-pill.idle .led { background: var(--ok); }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(56,189,248,0.55); }
+      70%  { box-shadow: 0 0 0 8px rgba(56,189,248,0); }
+      100% { box-shadow: 0 0 0 0 rgba(56,189,248,0); }
+    }
+
+    /* Live banner */
+    .live-banner {
+      display: none;
+      align-items: center; gap: 18px; flex-wrap: wrap;
+      padding: 14px 18px; margin-bottom: 22px;
+      border: 1px solid var(--accent-dim);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius);
+      background: linear-gradient(90deg, rgba(56,189,248,0.08), transparent 70%), var(--panel);
+    }
+    .live-banner.show { display: flex; }
+    .live-banner .field { display: flex; flex-direction: column; gap: 2px; }
+    .live-banner .field .k { color: var(--ink-faint); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+    .live-banner .field .v { font-size: 16px; }
+    .live-banner .clock { margin-left: auto; font-size: 26px; letter-spacing: 1px; color: var(--accent); }
+
+    /* KPI grid */
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px; position: relative; overflow: hidden;
+    }
+    .kpi::after {
+      content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+      opacity: 0.5;
+    }
+    .kpi .label { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; }
+    .kpi .value { font-size: 30px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+    .kpi .value.big { color: var(--accent); }
+
+    /* Layout columns */
+    .cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; }
+
+    section.card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; margin-bottom: 20px;
+    }
+    .card > h2 {
+      margin: 0; padding: 13px 18px; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--ink-dim); border-bottom: 1px solid var(--border-soft);
+      background: var(--panel-2);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .card > h2 .count { color: var(--ink-faint); font-weight: 400; }
+    .card .body { padding: 8px 18px 16px; }
+
+    /* Chunks bars */
+    .bar-row { padding: 11px 0; border-bottom: 1px solid var(--border-soft); }
+    .bar-row:last-child { border-bottom: none; }
+    .bar-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+    .bar-head .src { color: var(--ink); }
+    .bar-head .num { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+    .bar-head .num b { color: var(--accent); font-weight: 600; }
+    .track { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-soft); }
+    .fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); transition: width 0.6s ease; }
+
+    /* Sources table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left; padding: 9px 10px; font-size: 10px; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--ink-faint); border-bottom: 1px solid var(--border-soft);
+      font-weight: 500;
+    }
+    td { padding: 11px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    td.src-name { color: var(--ink); }
+    .rel { color: var(--ink-faint); font-size: 11px; }
+    tr.active-src { background: linear-gradient(90deg, rgba(56,189,248,0.08), transparent); }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 9px; border-radius: 6px; font-size: 11px; letter-spacing: 0.4px;
+      border: 1px solid transparent; white-space: nowrap;
+    }
+    .badge .b-led { width: 7px; height: 7px; border-radius: 50%; }
+    .badge.ok  { color: var(--ok);   border-color: rgba(52,211,153,0.3);  background: rgba(52,211,153,0.08); }
+    .badge.ok .b-led { background: var(--ok); }
+    .badge.err { color: var(--err);  border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.08); }
+    .badge.err .b-led { background: var(--err); }
+    .badge.run { color: var(--run);  border-color: var(--accent-dim);     background: rgba(56,189,248,0.08); }
+    .badge.run .b-led { background: var(--run); animation: pulse 1.4s ease-out infinite; }
+    .badge.idle { color: var(--ink-dim); border-color: var(--border); }
+    .badge.idle .b-led { background: var(--ink-faint); }
+
+    /* Problems */
+    .problems { max-height: 460px; overflow-y: auto; }
+    .problem {
+      display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+      padding: 11px 0; border-bottom: 1px solid var(--border-soft);
+    }
+    .problem:last-child { border-bottom: none; }
+    .p-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 88px; }
+    .p-time { color: var(--ink-faint); font-size: 11px; }
+    .lvl { font-size: 10px; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.6px; }
+    .lvl.WARN { color: var(--warn); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); }
+    .lvl.ERROR { color: var(--err); background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); }
+    .p-body .p-src { color: var(--accent); font-size: 11px; }
+    .p-body .p-logger { color: var(--ink-faint); font-size: 11px; }
+    .p-body .p-msg { color: var(--ink); margin-top: 3px; word-break: break-word; }
+
+    .empty { padding: 26px 10px; text-align: center; color: var(--ink-faint); font-size: 12px; }
+
+    /* Controls */
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+    button.action {
+      font-family: var(--mono); font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--ink); background: var(--panel); border: 1px solid var(--border);
+      padding: 9px 15px; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+    }
+    button.action:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); background: var(--panel-2); }
+    button.action:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.action.primary { border-color: var(--accent-dim); color: var(--accent); }
+
+    footer {
+      margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+      color: var(--ink-faint); font-size: 11px; letter-spacing: 0.4px;
+    }
+    footer .sep { color: var(--border); }
+    #toast {
+      position: fixed; right: 20px; bottom: 20px; z-index: 50;
+      background: var(--panel); border: 1px solid var(--accent-dim); color: var(--ink);
+      padding: 12px 16px; border-radius: 8px; font-size: 12px;
+      opacity: 0; transform: translateY(8px); transition: all 0.25s ease; pointer-events: none;
+      max-width: 320px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.err { border-color: var(--err); color: var(--err); }
+
+    @media (max-width: 860px) {
+      .kpis { grid-template-columns: repeat(2, 1fr); }
+      .cols { grid-template-columns: 1fr; }
+      .live-banner .clock { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <h1>x-rag<span class="dot"> // </span>indexing monitor</h1>
+        <span class="tag" id="team-tag">RAG project assistant</span>
+      </div>
+      <div class="head-right">
+        <span class="rel" id="last-refresh">—</span>
+        <span class="status-pill idle" id="status-pill">
+          <span class="led"></span><span id="status-text">Chargement…</span>
+        </span>
+      </div>
+    </header>
+
+    <div class="live-banner" id="live-banner" aria-live="polite">
+      <div class="field">
+        <span class="k">Source en cours</span>
+        <span class="v" id="live-source">—</span>
+      </div>
+      <div class="field">
+        <span class="k">Mode</span>
+        <span class="v" id="live-mode">—</span>
+      </div>
+      <div class="field">
+        <span class="k">Écoulé</span>
+        <span class="v"><span id="live-elapsed">—</span></span>
+      </div>
+      <div class="clock" id="live-clock" title="Temps écoulé depuis le début du run">00:00:00</div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="label">Chunks indexés</div>
+        <div class="value big" id="kpi-chunks">—</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Nœuds de graphe</div>
+        <div class="value" id="kpi-nodes">—</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Arêtes de graphe</div>
+        <div class="value" id="kpi-edges">—</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Merge requests</div>
+        <div class="value" id="kpi-mrs">—</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="action primary" id="btn-sync">Sync incrémentale</button>
+      <button class="action" id="btn-full">Sync complète</button>
+      <button class="action" id="btn-nightly">Batch nocturne</button>
+      <button class="action" id="btn-refresh">Rafraîchir</button>
+    </div>
+
+    <div class="cols">
+      <div>
+        <section class="card">
+          <h2>Chunks par source <span class="count" id="chunks-total">—</span></h2>
+          <div class="body" id="chunks-bars"><div class="empty">Chargement…</div></div>
+        </section>
+
+        <section class="card">
+          <h2>Sources <span class="count">dernière synchronisation</span></h2>
+          <div class="body" style="padding: 0 8px;">
+            <table>
+              <thead>
+                <tr><th>Source</th><th>Dernière sync</th><th>Progression</th><th>Statut</th></tr>
+              </thead>
+              <tbody id="sources-tbody">
+                <tr><td colspan="4" class="empty">Chargement…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div>
+        <section class="card">
+          <h2>Problèmes récents <span class="count" id="problems-count">—</span></h2>
+          <div class="body">
+            <div class="problems" id="problems-list"><div class="empty">Chargement…</div></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <footer>
+      <span>Rafraîchissement auto <b>3&nbsp;s</b></span>
+      <span class="sep">|</span>
+      <span>Dernier run : <b id="last-run">—</b></span>
+      <span class="sep">|</span>
+      <span>Endpoint : <code>/api/admin/indexing-status</code></span>
+    </footer>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    "use strict";
+
+    const NF = new Intl.NumberFormat("fr-FR");
+    const POLL_MS = 3000;
+    const $ = (id) => document.getElementById(id);
+
+    let elapsedBaseSeconds = null;   // valeur serveur au dernier fetch
+    let elapsedBaseAt = null;        // timestamp local du dernier fetch
+    let running = false;
+
+    function fmt(n) { return (n === null || n === undefined) ? "—" : NF.format(n); }
+
+    function hms(totalSeconds) {
+      if (totalSeconds === null || totalSeconds === undefined) return "—";
+      const s = Math.max(0, Math.floor(totalSeconds));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      const p = (x) => String(x).padStart(2, "0");
+      return `${p(h)}:${p(m)}:${p(sec)}`;
+    }
+
+    function durationText(seconds) {
+      if (seconds === null || seconds === undefined) return "—";
+      if (seconds < 60) return seconds + " s";
+      const m = Math.floor(seconds / 60), s = seconds % 60;
+      if (m < 60) return `${m} min ${String(s).padStart(2, "0")} s`;
+      const h = Math.floor(m / 60);
+      return `${h} h ${String(m % 60).padStart(2, "0")} min`;
+    }
+
+    function relTime(iso) {
+      if (!iso) return "—";
+      const then = new Date(iso).getTime();
+      if (isNaN(then)) return "—";
+      const diff = Math.round((Date.now() - then) / 1000);
+      if (diff < 60) return "il y a " + diff + " s";
+      if (diff < 3600) return "il y a " + Math.floor(diff / 60) + " min";
+      if (diff < 86400) return "il y a " + Math.floor(diff / 3600) + " h";
+      return "il y a " + Math.floor(diff / 86400) + " j";
+    }
+
+    function absTime(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "—";
+      return d.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
+    }
+
+    function shortLogger(name) {
+      if (!name) return "";
+      const parts = name.split(".");
+      return parts.length > 1 ? parts[parts.length - 1] : name;
+    }
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function statusBadge(status) {
+      const s = (status || "").toUpperCase();
+      if (s.startsWith("OK")) return `<span class="badge ok"><span class="b-led"></span>OK</span>`;
+      if (s.startsWith("ERREUR") || s.startsWith("ERROR"))
+        return `<span class="badge err"><span class="b-led"></span>Erreur</span>`;
+      if (s.startsWith("EN COURS")) return `<span class="badge run"><span class="b-led"></span>En cours</span>`;
+      return `<span class="badge idle"><span class="b-led"></span>${esc(status || "—")}</span>`;
+    }
+
+    function render(data) {
+      const m = data.metrics || {};
+      const live = data.live || {};
+      running = !!live.running;
+
+      // KPIs
+      $("kpi-chunks").textContent = fmt(m.totalChunks);
+      $("kpi-nodes").textContent = fmt(m.graphNodes);
+      $("kpi-edges").textContent = fmt(m.graphEdges);
+      $("kpi-mrs").textContent = fmt(m.mergeRequests);
+
+      // Status pill
+      const pill = $("status-pill");
+      if (running) {
+        pill.className = "status-pill running";
+        $("status-text").textContent = "Indexation en cours";
+      } else {
+        pill.className = "status-pill idle";
+        $("status-text").textContent = "Au repos";
+      }
+
+      // Live banner + horloge
+      const banner = $("live-banner");
+      if (running) {
+        banner.classList.add("show");
+        $("live-source").textContent = live.currentSource || "préparation…";
+        $("live-mode").textContent = live.fullRun ? "complète (bootstrap)" : "incrémentale";
+        elapsedBaseSeconds = (typeof live.elapsedSeconds === "number") ? live.elapsedSeconds : 0;
+        elapsedBaseAt = Date.now();
+        tickClock();
+      } else {
+        banner.classList.remove("show");
+        elapsedBaseSeconds = null;
+      }
+
+      // Chunks par source
+      const bysrc = m.chunksBySource || {};
+      const entries = Object.entries(bysrc).sort((a, b) => b[1] - a[1]);
+      const max = entries.reduce((mx, e) => Math.max(mx, e[1]), 0) || 1;
+      const total = m.totalChunks || 0;
+      $("chunks-total").textContent = fmt(total) + " au total";
+      $("chunks-bars").innerHTML = entries.length ? entries.map(([src, n]) => {
+        const pct = total ? Math.round((n / total) * 100) : 0;
+        const w = Math.max(2, Math.round((n / max) * 100));
+        return `<div class="bar-row">
+          <div class="bar-head">
+            <span class="src">${esc(src)}</span>
+            <span class="num"><b>${fmt(n)}</b> · ${pct}%</span>
+          </div>
+          <div class="track"><div class="fill" style="width:${w}%"></div></div>
+        </div>`;
+      }).join("") : `<div class="empty">Aucun chunk indexé</div>`;
+
+      // Sources : fusion sync_state (persisté) + progression (live)
+      const progressBySource = {};
+      (live.sources || []).forEach((s) => { progressBySource[s.source] = s; });
+      const syncSources = m.sources || [];
+      const seen = new Set(syncSources.map((s) => s.source));
+      const rows = syncSources.map((s) => ({ source: s.source, sync: s, prog: progressBySource[s.source] }));
+      (live.sources || []).forEach((s) => {
+        if (!seen.has(s.source)) rows.push({ source: s.source, sync: null, prog: s });
+      });
+
+      $("sources-tbody").innerHTML = rows.length ? rows.map((r) => {
+        const prog = r.prog;
+        const isActive = running && live.currentSource === r.source;
+        const lastSync = r.sync ? r.sync.lastSync : null;
+        let progCell = "—";
+        if (prog) {
+          const dur = (prog.startedAt && prog.finishedAt)
+            ? Math.round((new Date(prog.finishedAt) - new Date(prog.startedAt)) / 1000) : null;
+          const counts = `${fmt(prog.indexed)}/${fmt(prog.total)}`;
+          progCell = prog.finishedAt
+            ? `${counts} <span class="rel">· ${durationText(dur)}</span>`
+            : `<span class="rel">en cours…</span>`;
+        }
+        const statusText = prog ? prog.status : (r.sync ? r.sync.lastStatus : "");
+        return `<tr class="${isActive ? "active-src" : ""}">
+          <td class="src-name">${esc(r.source)}</td>
+          <td>${absTime(lastSync)}<div class="rel">${relTime(lastSync)}</div></td>
+          <td>${progCell}</td>
+          <td>${statusBadge(isActive ? "EN COURS" : statusText)}</td>
+        </tr>`;
+      }).join("") : `<tr><td colspan="4" class="empty">Aucune source synchronisée</td></tr>`;
+
+      // Problèmes
+      const problems = live.problems || [];
+      $("problems-count").textContent = problems.length ? problems.length + " (run courant)" : "aucun";
+      $("problems-list").innerHTML = problems.length ? problems.map((p) => `
+        <div class="problem">
+          <div class="p-meta">
+            <span class="lvl ${esc(p.level)}">${esc(p.level)}</span>
+            <span class="p-time">${relTime(p.at)}</span>
+          </div>
+          <div class="p-body">
+            ${p.source ? `<span class="p-src">${esc(p.source)}</span> ` : ""}
+            <span class="p-logger">${esc(shortLogger(p.logger))}</span>
+            <div class="p-msg">${esc(p.message)}</div>
+          </div>
+        </div>`).join("") : `<div class="empty">Aucun problème sur le run courant</div>`;
+
+      // Footer
+      $("last-run").textContent = durationText(live.lastRunDurationSeconds);
+      $("last-refresh").textContent = "MAJ " + new Date().toLocaleTimeString("fr-FR");
+    }
+
+    function tickClock() {
+      if (!running || elapsedBaseSeconds === null) return;
+      const extra = Math.floor((Date.now() - elapsedBaseAt) / 1000);
+      const total = elapsedBaseSeconds + extra;
+      $("live-clock").textContent = hms(total);
+      $("live-elapsed").textContent = durationText(total);
+    }
+    setInterval(tickClock, 1000);
+
+    async function load() {
+      try {
+        const res = await fetch("/api/admin/indexing-status", { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        render(await res.json());
+      } catch (e) {
+        $("status-text").textContent = "API injoignable";
+        $("status-pill").className = "status-pill idle";
+        toast("Statut injoignable : " + e.message, true);
+      }
+    }
+
+    let toastTimer = null;
+    function toast(msg, isErr) {
+      const t = $("toast");
+      t.textContent = msg;
+      t.className = "show" + (isErr ? " err" : "");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = ""; }, 4000);
+    }
+
+    async function trigger(url, label) {
+      try {
+        const res = await fetch(url, { method: "POST" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        toast(label + " lancé.");
+        setTimeout(load, 600);
+      } catch (e) {
+        toast(label + " en échec : " + e.message, true);
+      }
+    }
+
+    $("btn-sync").addEventListener("click", () => trigger("/api/admin/sync", "Sync incrémentale"));
+    $("btn-full").addEventListener("click", () => {
+      if (confirm("Lancer une indexation COMPLÈTE ? Cette opération peut être longue.")) {
+        trigger("/api/admin/sync?full=true", "Sync complète");
+      }
+    });
+    $("btn-nightly").addEventListener("click", () => {
+      if (confirm("Déclencher le batch nocturne complet maintenant ?")) {
+        trigger("/api/admin/nightly", "Batch nocturne");
+      }
+    });
+    $("btn-refresh").addEventListener("click", load);
+
+    load();
+    setInterval(load, POLL_MS);
+  </script>
+</body>
+</html>
