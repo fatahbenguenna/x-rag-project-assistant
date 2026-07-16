@@ -36,6 +36,15 @@ aliases:
   easyloc: ["Easy Loc", "easy-loc", "EASYLOC"]
   epsilon: ["Epsilon", "epsilon-service"]
 
+# Synonymes de recherche métier↔code : élargissent la recherche de MRs par sujet
+# (tool searchMergeRequests) SANS toucher au graphe — contrairement à `aliases:`, aucun
+# nœud projet n'est créé. Utile en monorepo, où le terme métier de l'utilisateur diffère
+# du nom technique dans le code. Correspondance à frontière de mot : « pos » retrouve
+# « fps-pos » mais pas « compose ». Clé = un nom quelconque du concept, valeur = ses équivalents.
+synonyms:
+  pos: ["caisse", "point de vente"]   # « caisse » retrouve aussi les MRs qui disent « pos »/« fps-pos »
+  kds: ["cuisine", "kitchen"]
+
 schedule:
   nightly: "0 0 2 * * *"        # cron Spring (6 champs) — batch nocturne 02:00
 

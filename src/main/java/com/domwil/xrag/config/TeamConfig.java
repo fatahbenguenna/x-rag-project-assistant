@@ -21,12 +21,14 @@ public record TeamConfig(
         @NotNull @Valid Llm llm,
         @NotNull @Valid Sources sources,
         Map<String, List<String>> aliases,
+        Map<String, List<String>> synonyms,
         Schedule schedule,
         Extractors extractors
 ) {
 
     public TeamConfig {
         aliases = aliases == null ? Map.of() : Map.copyOf(aliases);
+        synonyms = synonyms == null ? Map.of() : Map.copyOf(synonyms);
         schedule = schedule == null ? new Schedule(null) : schedule;
         extractors = extractors == null ? new Extractors(true, true, false) : extractors;
     }

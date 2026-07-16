@@ -20,18 +20,6 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
 
     private static final Set<String> SORT_COLUMNS = Set.of("created_at", "updated_at", "merged_at");
 
-    /**
-     * Mots vides français écartés de la recherche par sujet (bruit sans valeur discriminante).
-     * Filet de sécurité : le tool reçoit en principe des termes distinctifs, pas une phrase.
-     */
-    private static final Set<String> STOPWORDS = Set.of(
-            "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "au", "aux", "en",
-            "dans", "par", "pour", "sur", "avec", "sans", "entre", "vers", "est", "sont", "ont",
-            "qui", "que", "quoi", "dont", "ce", "cet", "cette", "ces", "se", "sa", "son", "ses",
-            "leur", "leurs", "il", "elle", "ils", "elles", "on", "ne", "pas", "plus", "moi", "toi",
-            "comment", "quel", "quelle", "quelles", "quels", "tout", "toute", "tous", "toutes",
-            "relation", "liste");
-
     private static final RowMapper<MergeRequestMeta> ROW_MAPPER = (rs, i) -> new MergeRequestMeta(
             rs.getString("id"), rs.getString("project"), rs.getLong("iid"),
             rs.getString("title"), rs.getString("description"), rs.getString("state"),
@@ -81,18 +69,18 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
     }
 
     @Override
-    public List<MergeRequestMeta> search(String query, int limit) {
-        List<String> terms = tokenize(query);
-        if (terms.isEmpty()) {
+    public List<MergeRequestMeta> search(List<List<String>> concepts, int limit) {
+        if (concepts == null || concepts.isEmpty()) {
             return List.of();
         }
-        // Un terme dans le TITRE pèse 3, dans le corps (description/labels/branches) pèse 1 :
+        // Un concept dans le TITRE pèse 3, dans le corps (description/labels/branches) pèse 1 :
         // sinon un doc de suivi récent qui cite tous les noms d'apps supplante la MR qui
-        // TRAITE réellement du sujet (match noyé dans une longue description). Chaque terme
-        // consomme donc 2 placeholders (titre puis corps).
-        String scoreExpr = terms.stream()
-                .map(t -> "(CASE WHEN base.title_hay LIKE ? THEN 3 ELSE 0 END "
-                        + "+ CASE WHEN base.body_hay LIKE ? THEN 1 ELSE 0 END)")
+        // TRAITE réellement du sujet (match noyé dans une longue description). Match à
+        // frontière de mot (« pos » retrouve fps-pos mais pas « compose »). Chaque concept
+        // consomme 2 placeholders (regex titre puis regex corps).
+        String scoreExpr = concepts.stream()
+                .map(c -> "(CASE WHEN base.title_hay ~* ? THEN 3 ELSE 0 END "
+                        + "+ CASE WHEN base.body_hay ~* ? THEN 1 ELSE 0 END)")
                 .collect(java.util.stream.Collectors.joining(" + "));
         String sql = """
                 SELECT scored.* FROM (
@@ -111,32 +99,28 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
                 ORDER BY scored.match_score DESC, scored.updated_at DESC NULLS LAST
                 LIMIT ?
                 """.formatted(scoreExpr);
-        Object[] params = new Object[terms.size() * 2 + 1];
+        Object[] params = new Object[concepts.size() * 2 + 1];
         int p = 0;
-        for (String term : terms) {
-            String like = "%" + term + "%";
-            params[p++] = like; // titre (poids 3)
-            params[p++] = like; // corps (poids 1)
+        for (List<String> forms : concepts) {
+            String regex = conceptRegex(forms);
+            params[p++] = regex; // titre (poids 3)
+            params[p++] = regex; // corps (poids 1)
         }
         params[p] = limit;
         return jdbc.query(sql, ROW_MAPPER, params);
     }
 
-    /** Découpe la requête en termes distinctifs (minuscules, sans mots vides, dédupliqués, max 8). */
-    private static List<String> tokenize(String query) {
-        if (query == null || query.isBlank()) {
-            return List.of();
-        }
-        var terms = new java.util.LinkedHashSet<String>();
-        for (String token : query.toLowerCase().split("[^a-z0-9à-ÿ]+")) {
-            if (token.length() >= 2 && !STOPWORDS.contains(token)) {
-                terms.add(token);
-            }
-            if (terms.size() >= 8) {
-                break;
-            }
-        }
-        return List.copyOf(terms);
+    /** Regex POSIX d'un concept : {@code \m(forme1|forme2|…)\M} (frontière de mot, formes échappées). */
+    private static String conceptRegex(List<String> forms) {
+        String alternation = forms.stream()
+                .map(JdbcMergeRequestRepository::escapeRegex)
+                .collect(java.util.stream.Collectors.joining("|"));
+        return "\\m(" + alternation + ")\\M";
+    }
+
+    /** Échappe les métacaractères ERE ; l'espace et le tiret restent littéraux. */
+    private static String escapeRegex(String form) {
+        return form.replaceAll("([.\\\\+*?\\[\\]^$(){}|])", "\\\\$1");
     }
 
     @Override

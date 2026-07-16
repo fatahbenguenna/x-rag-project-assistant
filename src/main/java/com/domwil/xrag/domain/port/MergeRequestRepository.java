@@ -19,12 +19,17 @@ public interface MergeRequestRepository {
     List<MergeRequestMeta> find(String state, String sortColumn, boolean ascending, int limit);
 
     /**
-     * Recherche les MRs par sujet, sur titre + description + labels + branches. Les
-     * termes du {@code query} sont matchés en OU ; les MRs qui en mentionnent le plus
-     * ressortent en premier. Alimente le tool {@code searchMergeRequests} pour les
-     * questions du type « quelles MRs concernent X ? ».
+     * Recherche les MRs par sujet, sur titre + description + labels + branches.
+     * Chaque {@code concept} est un groupe de formes équivalentes (le terme et ses
+     * synonymes, ex. {@code [pos, caisse]}) : un concept compte pour un point si
+     * l'une de ses formes apparaît. Match à frontière de mot (« pos » retrouve
+     * {@code fps-pos} mais pas « compose »), pondéré titre &gt; corps. Les MRs qui
+     * couvrent le plus de concepts distincts ressortent en premier. Alimente le tool
+     * {@code searchMergeRequests}.
+     *
+     * @param concepts groupes de formes (déjà normalisés : minuscules, sans mots vides)
      */
-    List<MergeRequestMeta> search(String query, int limit);
+    List<MergeRequestMeta> search(List<List<String>> concepts, int limit);
 
     long count(String state);
 

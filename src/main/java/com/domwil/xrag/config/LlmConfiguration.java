@@ -58,8 +58,8 @@ public class LlmConfiguration {
     }
 
     @Bean
-    public MergeRequestTools mergeRequestTools(MergeRequestRepository mergeRequests) {
-        return new MergeRequestTools(mergeRequests);
+    public MergeRequestTools mergeRequestTools(MergeRequestRepository mergeRequests, TeamConfig config) {
+        return new MergeRequestTools(mergeRequests, config.synonyms());
     }
 
     @Bean

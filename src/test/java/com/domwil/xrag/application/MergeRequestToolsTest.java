@@ -3,12 +3,13 @@ package com.domwil.xrag.application;
 import com.domwil.xrag.domain.model.MergeRequestMeta;
 import com.domwil.xrag.domain.port.MergeRequestRepository;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -18,7 +19,8 @@ import static org.mockito.Mockito.when;
 class MergeRequestToolsTest {
 
     private final MergeRequestRepository repository = mock(MergeRequestRepository.class);
-    private final MergeRequestTools tools = new MergeRequestTools(repository);
+    private final MergeRequestTools tools = new MergeRequestTools(repository,
+            Map.of("pos", List.of("caisse"), "kds", List.of("cuisine")));
 
     private static MergeRequestMeta mr(long iid, String title) {
         return new MergeRequestMeta("gitlab:42:" + iid, "kds", iid, title, "description",
@@ -29,7 +31,7 @@ class MergeRequestToolsTest {
 
     @Test
     void rechercheLesMrsParSujetEtLesFormate() {
-        when(repository.search(eq("KDS caisse"), anyInt()))
+        when(repository.search(any(), anyInt()))
                 .thenReturn(List.of(mr(101, "feat: notification caisse vers KDS"),
                         mr(102, "fix: timeout KDS")));
 
@@ -41,7 +43,7 @@ class MergeRequestToolsTest {
 
     @Test
     void messageExpliciteQuandAucuneMrNeCorrespond() {
-        when(repository.search(eq("inexistant"), anyInt())).thenReturn(List.of());
+        when(repository.search(any(), anyInt())).thenReturn(List.of());
 
         assertThat(tools.searchMergeRequests("inexistant", null))
                 .contains("Aucune").contains("inexistant");
@@ -49,21 +51,43 @@ class MergeRequestToolsTest {
 
     @Test
     void limiteParDefautA20QuandNonPrecisee() {
-        when(repository.search(eq("KDS"), anyInt())).thenReturn(List.of());
+        when(repository.search(any(), anyInt())).thenReturn(List.of());
 
         tools.searchMergeRequests("KDS", null);
 
-        verify(repository).search(eq("KDS"), eq(20));
+        verify(repository).search(any(), eq(20));
     }
 
     @Test
     void plafonneLaLimiteA50() {
-        when(repository.search(eq("KDS"), anyInt())).thenReturn(List.of());
+        when(repository.search(any(), anyInt())).thenReturn(List.of());
 
         tools.searchMergeRequests("KDS", 999);
 
-        ArgumentCaptor<Integer> limit = ArgumentCaptor.forClass(Integer.class);
-        verify(repository).search(eq("KDS"), limit.capture());
-        assertThat(limit.getValue()).isEqualTo(50);
+        verify(repository).search(any(), eq(50));
+    }
+
+    @Test
+    void etendUnTermeMetierVersSonSynonymeCode() {
+        // « caisse » doit s'étendre au concept contenant aussi « pos » (nom code de l'app).
+        List<List<String>> concepts = tools.toConcepts("caisse");
+
+        assertThat(concepts).hasSize(1);
+        assertThat(concepts.getFirst()).contains("pos", "caisse");
+    }
+
+    @Test
+    void ecarteLesMotsVidesEtDedupliqueLesConcepts() {
+        // « la », « et » écartés ; « caisse » répété = un seul concept.
+        List<List<String>> concepts = tools.toConcepts("les MRs sur la caisse et la caisse");
+
+        long conceptsCaisse = concepts.stream().filter(c -> c.contains("caisse")).count();
+        assertThat(conceptsCaisse).isEqualTo(1);
+        assertThat(concepts).noneSatisfy(c -> assertThat(c).contains("la"));
+    }
+
+    @Test
+    void unMotSansSynonymeDevientUnConceptSingleton() {
+        assertThat(tools.toConcepts("multitenant")).containsExactly(List.of("multitenant"));
     }
 }
