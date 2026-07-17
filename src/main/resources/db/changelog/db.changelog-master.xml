@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+      Changelog maître : XML (préféré) qui agrège les changesets DDL en SQL.
+      relativeToChangelogFile="true" -> les FILENAME suivis dans DATABASECHANGELOG
+      restent « db/changelog/00X-….sql », identiques à l'ancien master YAML :
+      aucun rejeu sur une base déjà migrée.
+    -->
+    <include file="001-extensions.sql" relativeToChangelogFile="true"/>
+    <include file="002-rag-chunks.sql" relativeToChangelogFile="true"/>
+    <include file="003-graph.sql" relativeToChangelogFile="true"/>
+    <include file="004-merge-requests.sql" relativeToChangelogFile="true"/>
+    <include file="005-sync-state.sql" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

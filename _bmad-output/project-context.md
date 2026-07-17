@@ -68,7 +68,7 @@ _Ce fichier contient les règles et patterns critiques que les agents IA doivent
 
 ### Règles critiques à ne pas manquer
 
-- **Jamais Flyway** — Liquibase uniquement (décision explicite) ; nouveau changelog = `db/changelog/NNN-nom.sql` + référence dans `db.changelog-master.yaml`
+- **Jamais Flyway** — Liquibase uniquement (décision explicite) ; nouveau changelog = `db/changelog/NNN-nom.sql` + `<include>` dans `db.changelog-master.xml` (master XML, changesets SQL ; jamais YAML/JSON)
 - **Jamais Neo4j** — le graphe vit dans Postgres (`graph_nodes`/`graph_edges`, PK `(src,dst,type)`) ; voisinage via `WITH RECURSIVE` profondeur 2, plafonné (protection du prompt)
 - **Jamais de destruction d'index** : upsert only (`ON CONFLICT`), clé de chunk stable `source:path:chunk_index` ; un batch nocturne en échec laisse l'index de la veille servi
 - Index HNSW : jamais de rebuild — `VACUUM ANALYZE` seulement
