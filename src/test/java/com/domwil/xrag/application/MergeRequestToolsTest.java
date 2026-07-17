@@ -10,6 +10,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -89,5 +90,19 @@ class MergeRequestToolsTest {
     @Test
     void unMotSansSynonymeDevientUnConceptSingleton() {
         assertThat(tools.toConcepts("multitenant")).containsExactly(List.of("multitenant"));
+    }
+
+    @Test
+    void listMergeRequestsTolereLesArgumentsOmisParLeLlm() {
+        // Le LLM peut n'envoyer aucun argument : state/sortBy/oldestFirst arrivent à null.
+        // oldestFirst était un boolean primitif -> NPE au binding Spring AI. Régression.
+        when(repository.find(any(), any(), anyBoolean(), anyInt()))
+                .thenReturn(List.of(mr(1, "feat: x")));
+
+        String result = tools.listMergeRequests(null, null, null, null);
+
+        assertThat(result).contains("!1");
+        // Défauts appliqués : état « all », tri par défaut, plus récentes d'abord (false), limite 10.
+        verify(repository).find("all", null, false, 10);
     }
 }

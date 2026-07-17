@@ -48,11 +48,16 @@ public class MergeRequestTools {
             sur les MRs (les plus vieilles, les plus récentes, par état). Retourne
             titre, état, auteur, projet, dates et URL.""")
     public String listMergeRequests(
-            @ToolParam(description = "État : opened, merged, closed ou all") String state,
-            @ToolParam(description = "Colonne de tri : created_at, updated_at ou merged_at") String sortBy,
-            @ToolParam(description = "true = plus anciennes d'abord, false = plus récentes d'abord") boolean oldestFirst,
+            @ToolParam(description = "État : opened, merged, closed ou all (all par défaut)",
+                    required = false) String state,
+            @ToolParam(description = "Colonne de tri : created_at, updated_at ou merged_at (created_at par défaut)",
+                    required = false) String sortBy,
+            @ToolParam(description = "true = plus anciennes d'abord, false = plus récentes d'abord (défaut)",
+                    required = false) Boolean oldestFirst,
             @ToolParam(description = "Nombre maximum de résultats (10 par défaut)", required = false) Integer limit) {
-        var results = mergeRequests.find(normalizeState(state), sortBy, oldestFirst,
+        // Boolean (boxé) et required=false : quand le LLM omet un argument, Spring AI passe
+        // null ; un paramètre primitif (boolean) lèverait alors une NPE au binding du tool.
+        var results = mergeRequests.find(normalizeState(state), sortBy, Boolean.TRUE.equals(oldestFirst),
                 limit == null || limit < 1 ? 10 : Math.min(limit, 50));
         if (results.isEmpty()) {
             return "Aucune merge request ne correspond.";
