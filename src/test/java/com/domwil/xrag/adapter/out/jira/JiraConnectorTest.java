@@ -27,6 +27,9 @@ class JiraConnectorTest {
                 {"type":"text","text":"Envoi"},{"type":"text","text":"cuisine"}]}]},
               "status":{"name":"Open"},"issuetype":{"name":"Task"},
               "project":{"key":"FPSSUITE"},"labels":[],
+              "comment":{"comments":[{"author":{"displayName":"Alice"},
+                "body":{"type":"doc","content":[{"type":"paragraph","content":[
+                  {"type":"text","text":"decision"},{"type":"text","text":"retenue"}]}]}}]},
               "updated":"2026-07-14T17:20:16.158+0200","issuelinks":[]}}],
              "nextPageToken":"tok1","isLast":false}""";
     private static final String PAGE_2 = """
@@ -61,7 +64,8 @@ class JiraConnectorTest {
 
         assertThat(docs).hasSize(2);
         assertThat(docs.get(0).path()).isEqualTo("FPSSUITE-1");
-        assertThat(docs.get(0).content()).contains("Webhook cuisine").contains("Envoi cuisine");
+        assertThat(docs.get(0).content()).contains("Webhook cuisine").contains("Envoi cuisine")
+                .contains("Commentaires").contains("Alice : decision retenue");
         assertThat(docs.get(0).url()).isEqualTo(CLOUD + "/browse/FPSSUITE-1");
         assertThat(docs.get(1).path()).isEqualTo("FPSSUITE-2");
         server.verify();

@@ -10,6 +10,7 @@ import com.domwil.xrag.domain.port.TopicExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,8 +51,20 @@ public class GraphEnrichmentService {
         }
     }
 
+    /** Enrichit les documents non rattachés (node_ids vide) — les plus gros d'abord (batch nocturne). */
     public Report enrich(int maxDocuments) {
-        List<UnattachedDocument> documents = chunks.unattachedDocuments(maxDocuments);
+        return enrichAll(chunks.unattachedDocuments(maxDocuments));
+    }
+
+    /**
+     * Enrichit les documents sans nœud TOPIC des sources données (ex. Confluence/Jira), même
+     * déjà rattachés à leur PAGE/ISSUE : densifie leur couverture sémantique. Sources vides = toutes.
+     */
+    public Report enrichSources(Collection<String> sources, int maxDocuments) {
+        return enrichAll(chunks.documentsNeedingTopics(sources, maxDocuments));
+    }
+
+    private Report enrichAll(List<UnattachedDocument> documents) {
         int enriched = 0;
         int topicNodes = 0;
         int attached = 0;

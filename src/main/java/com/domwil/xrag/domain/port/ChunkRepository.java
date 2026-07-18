@@ -22,8 +22,17 @@ public interface ChunkRepository {
     List<UnattachedDocument> unattachedDocuments(int limit);
 
     /**
-     * Rattache tous les chunks d'un document aux nœuds donnés (colonne node_ids) — upsert
-     * only, sans ré-embedding.
+     * Documents sans aucun nœud {@code TOPIC} (rattachés éventuellement à leur PAGE/ISSUE/CLASS,
+     * mais pas à un sujet), optionnellement filtrés par source. Sert à densifier la couverture
+     * sémantique de sources déjà rattachées (ex. Confluence/Jira), au-delà du seul rattachement.
+     *
+     * @param sources sources à cibler (ex. {@code [confluence, jira]}) ; vide = toutes
+     */
+    List<UnattachedDocument> documentsNeedingTopics(Collection<String> sources, int limit);
+
+    /**
+     * Ajoute les nœuds donnés aux chunks d'un document (colonne node_ids), en <b>fusion</b> :
+     * les rattachements existants (PAGE/ISSUE/CLASS) sont préservés. Upsert only, sans ré-embedding.
      *
      * @return nombre de chunks mis à jour
      */

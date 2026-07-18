@@ -48,9 +48,18 @@ public class AdminController {
         this.taskExecutor = taskExecutor;
     }
 
-    /** Indexation à la demande. {@code full=true} = indexation initiale complète (bootstrap). */
+    /**
+     * Indexation à la demande. {@code full=true} = ré-indexation forcée (même version inchangée,
+     * ex. après ajout des commentaires). {@code source} = cible une seule source (confluence,
+     * gitlab-code, jira) ; absent = toutes.
+     */
     @PostMapping("/sync")
-    public ResponseEntity<Map<String, Object>> sync(@RequestParam(defaultValue = "false") boolean full) {
+    public ResponseEntity<Map<String, Object>> sync(@RequestParam(defaultValue = "false") boolean full,
+                                                    @RequestParam(required = false) String source) {
+        if (source != null && !source.isBlank()) {
+            taskExecutor.execute(() -> syncService.syncSource(source, full));
+            return ResponseEntity.accepted().body(Map.of("started", true, "full", full, "source", source));
+        }
         taskExecutor.execute(() -> syncService.syncAll(full));
         return ResponseEntity.accepted().body(Map.of("started", true, "full", full));
     }
@@ -89,10 +98,17 @@ public class AdminController {
      * Complète le déclenchement automatique du batch nocturne.
      */
     @PostMapping("/enrich")
-    public ResponseEntity<Map<String, Object>> enrich(@RequestParam(defaultValue = "50") int max) {
+    public ResponseEntity<Map<String, Object>> enrich(@RequestParam(defaultValue = "50") int max,
+                                                      @RequestParam(required = false) String sources) {
         int capped = Math.max(1, Math.min(max, 500));
+        if (sources != null && !sources.isBlank()) {
+            var targets = java.util.Arrays.stream(sources.split(",")).map(String::trim)
+                    .filter(s -> !s.isBlank()).toList();
+            taskExecutor.execute(() -> graphEnrichment.enrichSources(targets, capped));
+            return ResponseEntity.accepted().body(Map.of("started", true, "max", capped, "sources", targets));
+        }
         taskExecutor.execute(() -> graphEnrichment.enrich(capped));
-        return ResponseEntity.accepted().body(Map.of("started", true, "max", capped));
+        return ResponseEntity.accepted().body(Map.of("started", true, "max", capped, "sources", "unattached"));
     }
 
     /** Couverture du graphe + trous détectés (décision 10 : extraction LLM seulement si trous). */

@@ -5,6 +5,7 @@ import com.domwil.xrag.domain.model.ScoredChunk;
 import com.domwil.xrag.domain.model.UnattachedDocument;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -21,6 +22,10 @@ import java.util.Set;
 public class JdbcChunkRepository implements ChunkRepository {
 
     private static final int CANDIDATES_PER_CHANNEL = 40;
+
+    private static final RowMapper<UnattachedDocument> UNATTACHED_MAPPER = (rs, i) -> new UnattachedDocument(
+            rs.getString("source"), rs.getString("project"),
+            rs.getString("path"), rs.getString("title"), rs.getString("text"));
 
     private final JdbcTemplate jdbc;
 
@@ -74,15 +79,38 @@ public class JdbcChunkRepository implements ChunkRepository {
                         ORDER BY count(*) DESC
                         LIMIT ?
                         """,
-                (rs, i) -> new UnattachedDocument(rs.getString("source"), rs.getString("project"),
-                        rs.getString("path"), rs.getString("title"), rs.getString("text")),
-                limit);
+                UNATTACHED_MAPPER, limit);
+    }
+
+    @Override
+    public List<UnattachedDocument> documentsNeedingTopics(Collection<String> sources, int limit) {
+        boolean allSources = sources == null || sources.isEmpty();
+        // Concaténation (pas de String.formatted) : le SQL contient « LIKE 'topic:%' » et le
+        // « %' » serait pris pour un spécificateur de format.
+        String sql = "SELECT source, min(project) AS project, path, min(title) AS title, "
+                + "left(string_agg(content, E'\\n' ORDER BY chunk_index), 3000) AS text "
+                + "FROM rag_chunks "
+                + "WHERE NOT EXISTS (SELECT 1 FROM unnest(node_ids) nid WHERE nid LIKE 'topic:%') "
+                + (allSources ? "" : "AND source = ANY(?::text[]) ")
+                + "GROUP BY source, path ORDER BY count(*) DESC LIMIT ?";
+        Object[] params = allSources
+                ? new Object[]{limit}
+                : new Object[]{PgArrays.textArray(sources), limit};
+        return jdbc.query(sql, UNATTACHED_MAPPER, params);
     }
 
     @Override
     public int attachToNodes(String source, String path, Set<String> nodeIds) {
-        return jdbc.update(
-                "UPDATE rag_chunks SET node_ids = ?::text[], updated_at = now() WHERE source = ? AND path = ?",
+        // Fusion : on préserve les rattachements existants (PAGE/ISSUE/CLASS) et on ajoute les
+        // nœuds donnés, dédupliqués. array_agg peut renvoyer NULL sur un tableau vide -> coalesce.
+        return jdbc.update("""
+                        UPDATE rag_chunks
+                        SET node_ids = coalesce(
+                                (SELECT array_agg(DISTINCT nid) FROM unnest(node_ids || ?::text[]) nid),
+                                '{}'::text[]),
+                            updated_at = now()
+                        WHERE source = ? AND path = ?
+                        """,
                 PgArrays.textArray(nodeIds), source, path);
     }
 

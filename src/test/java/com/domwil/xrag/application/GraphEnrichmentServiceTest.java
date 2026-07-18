@@ -76,6 +76,22 @@ class GraphEnrichmentServiceTest {
     }
 
     @Test
+    void enrichSourcesTopicEnrichitLesDocumentsCiblesMemeDejaRattaches() {
+        when(chunks.documentsNeedingTopics(any(), anyInt())).thenReturn(List.of(
+                new UnattachedDocument("confluence", "fps-suite", "page:1", "Multi-tenant", "souscription client")));
+        when(topics.extractTopics(any(), any())).thenReturn(List.of("multi-tenant"));
+        when(chunks.attachToNodes(eq("confluence"), eq("page:1"), any())).thenReturn(2);
+
+        GraphEnrichmentService.Report report = service.enrichSources(List.of("confluence", "jira"), 50);
+
+        assertThat(report.documentsEnriched()).isEqualTo(1);
+        assertThat(report.chunksAttached()).isEqualTo(2);
+        verify(chunks).documentsNeedingTopics(argThat(s -> s.contains("confluence") && s.contains("jira")), eq(50));
+        verify(chunks).attachToNodes(eq("confluence"), eq("page:1"),
+                argThat(ids -> ids.contains("topic:multitenant")));
+    }
+
+    @Test
     void unEchecLlmSurUnDocumentNInterromptPasLeLot() {
         when(chunks.unattachedDocuments(anyInt())).thenReturn(List.of(doc("a.yml"), doc("b.yml")));
         when(topics.extractTopics(any(), any()))
