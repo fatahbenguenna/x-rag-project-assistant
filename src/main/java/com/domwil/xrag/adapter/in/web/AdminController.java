@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.in.web;
 
+import com.domwil.xrag.application.GraphEnrichmentService;
 import com.domwil.xrag.application.GraphQualityService;
 import com.domwil.xrag.application.IndexingStatusService;
 import com.domwil.xrag.application.IndexingStatusService.IndexingStatus;
@@ -28,18 +29,21 @@ public class AdminController {
     private final MaintenanceRepository maintenance;
     private final NightlyBatchService nightlyBatch;
     private final GraphQualityService graphQuality;
+    private final GraphEnrichmentService graphEnrichment;
     private final IndexingStatusService indexingStatus;
     private final TaskExecutor taskExecutor;
 
     public AdminController(SyncService syncService, SmokeTestService smokeTests,
                            MaintenanceRepository maintenance, NightlyBatchService nightlyBatch,
-                           GraphQualityService graphQuality, IndexingStatusService indexingStatus,
+                           GraphQualityService graphQuality, GraphEnrichmentService graphEnrichment,
+                           IndexingStatusService indexingStatus,
                            @Qualifier("applicationTaskExecutor") TaskExecutor taskExecutor) {
         this.syncService = syncService;
         this.smokeTests = smokeTests;
         this.maintenance = maintenance;
         this.nightlyBatch = nightlyBatch;
         this.graphQuality = graphQuality;
+        this.graphEnrichment = graphEnrichment;
         this.indexingStatus = indexingStatus;
         this.taskExecutor = taskExecutor;
     }
@@ -76,6 +80,19 @@ public class AdminController {
     @GetMapping("/indexing-status")
     public IndexingStatus indexingStatus() {
         return indexingStatus.current();
+    }
+
+    /**
+     * Enrichissement LLM du graphe à la demande (décision 10) : crée des nœuds TOPIC pour les
+     * documents non rattachés et y relie leurs chunks. Asynchrone sur le taskExecutor (appels
+     * LLM bloquants — jamais sur l'event-loop réactif) ; le bilan est tracé dans les logs.
+     * Complète le déclenchement automatique du batch nocturne.
+     */
+    @PostMapping("/enrich")
+    public ResponseEntity<Map<String, Object>> enrich(@RequestParam(defaultValue = "50") int max) {
+        int capped = Math.max(1, Math.min(max, 500));
+        taskExecutor.execute(() -> graphEnrichment.enrich(capped));
+        return ResponseEntity.accepted().body(Map.of("started", true, "max", capped));
     }
 
     /** Couverture du graphe + trous détectés (décision 10 : extraction LLM seulement si trous). */

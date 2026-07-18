@@ -179,6 +179,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | **Dashboard d'indexation** | 🪟 navigateur | `http://localhost:8080/dashboard.html` — monitoring temps quasi-réel (chunks/source, tâche en cours, temps écoulé, problèmes) |
 | État de l'index | 🐧 | `curl -s localhost:8080/api/admin/status` (brut) ou `.../api/admin/indexing-status` (détaillé) |
 | Qualité du graphe | 🐧 | `curl -s localhost:8080/api/admin/graph-quality` (verdict + trous éventuels) |
+| Enrichissement LLM du graphe | 🐧 | `curl -X POST 'localhost:8080/api/admin/enrich?max=150'` (async, bilan dans les logs) — utile si `graph-quality` signale < 50 % de chunks rattachés ; sinon automatique dans le batch nocturne si `extractors.llm: true` |
 | Batch à la demande | 🐧 | `curl -X POST localhost:8080/api/admin/nightly` |
 | Latences vs cibles | 🐧 | `./scripts/measure-latency.sh` |
 

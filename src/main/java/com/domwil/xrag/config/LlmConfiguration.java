@@ -1,12 +1,17 @@
 package com.domwil.xrag.config;
 
+import com.domwil.xrag.adapter.out.llm.LlmTopicExtractor;
+import com.domwil.xrag.application.AliasResolver;
 import com.domwil.xrag.application.EntityDetector;
+import com.domwil.xrag.application.GraphEnrichmentService;
 import com.domwil.xrag.application.MergeRequestTools;
 import com.domwil.xrag.application.ModelRouter;
 import com.domwil.xrag.application.RagChatService;
 import com.domwil.xrag.domain.port.ChunkRepository;
+import com.domwil.xrag.domain.port.GraphRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
 import com.domwil.xrag.domain.port.MergeRequestRepository;
+import com.domwil.xrag.domain.port.TopicExtractor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -50,6 +55,17 @@ public class LlmConfiguration {
             default -> throw new IllegalStateException(
                     "llm.provider non supporté : " + provider + " (attendu : ollama | gemini)");
         };
+    }
+
+    @Bean
+    public TopicExtractor topicExtractor(ChatClient chatClient) {
+        return new LlmTopicExtractor(chatClient);
+    }
+
+    @Bean
+    public GraphEnrichmentService graphEnrichmentService(ChunkRepository chunks, GraphRepository graph,
+                                                         TopicExtractor topicExtractor, AliasResolver aliases) {
+        return new GraphEnrichmentService(chunks, graph, topicExtractor, aliases);
     }
 
     @Bean

@@ -2,6 +2,7 @@ package com.domwil.xrag.adapter.out.persistence;
 
 import com.domwil.xrag.domain.model.Chunk;
 import com.domwil.xrag.domain.model.ScoredChunk;
+import com.domwil.xrag.domain.model.UnattachedDocument;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -58,6 +59,31 @@ public class JdbcChunkRepository implements ChunkRepository {
     public void deleteOtherChunksOf(String source, String path, Collection<String> keepIds) {
         jdbc.update("DELETE FROM rag_chunks WHERE source = ? AND path = ? AND NOT (id = ANY(?::text[]))",
                 source, path, PgArrays.textArray(keepIds));
+    }
+
+    @Override
+    public List<UnattachedDocument> unattachedDocuments(int limit) {
+        // Un document = un (source, path) ; on agrège son texte (tronqué) pour l'extraction LLM.
+        // Les plus gros d'abord : rattacher un doc à N chunks fait gagner N au ratio.
+        return jdbc.query("""
+                        SELECT source, min(project) AS project, path, min(title) AS title,
+                               left(string_agg(content, E'\\n' ORDER BY chunk_index), 3000) AS text
+                        FROM rag_chunks
+                        WHERE cardinality(node_ids) = 0
+                        GROUP BY source, path
+                        ORDER BY count(*) DESC
+                        LIMIT ?
+                        """,
+                (rs, i) -> new UnattachedDocument(rs.getString("source"), rs.getString("project"),
+                        rs.getString("path"), rs.getString("title"), rs.getString("text")),
+                limit);
+    }
+
+    @Override
+    public int attachToNodes(String source, String path, Set<String> nodeIds) {
+        return jdbc.update(
+                "UPDATE rag_chunks SET node_ids = ?::text[], updated_at = now() WHERE source = ? AND path = ?",
+                PgArrays.textArray(nodeIds), source, path);
     }
 
     @Override

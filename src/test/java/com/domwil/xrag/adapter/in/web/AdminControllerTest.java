@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.in.web;
 
+import com.domwil.xrag.application.GraphEnrichmentService;
 import com.domwil.xrag.application.GraphQualityService;
 import com.domwil.xrag.application.IndexingProgressTracker;
 import com.domwil.xrag.application.IndexingStatusService;
@@ -24,8 +25,8 @@ class AdminControllerTest {
     private final IndexingStatusService indexingStatus = mock(IndexingStatusService.class);
     private final AdminController controller = new AdminController(
             mock(SyncService.class), mock(SmokeTestService.class), mock(MaintenanceRepository.class),
-            mock(NightlyBatchService.class), mock(GraphQualityService.class), indexingStatus,
-            mock(TaskExecutor.class));
+            mock(NightlyBatchService.class), mock(GraphQualityService.class),
+            mock(GraphEnrichmentService.class), indexingStatus, mock(TaskExecutor.class));
 
     @Test
     void exposeLeStatutDIndexationPourLeDashboard() {

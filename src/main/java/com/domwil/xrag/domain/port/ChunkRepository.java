@@ -2,6 +2,7 @@ package com.domwil.xrag.domain.port;
 
 import com.domwil.xrag.domain.model.Chunk;
 import com.domwil.xrag.domain.model.ScoredChunk;
+import com.domwil.xrag.domain.model.UnattachedDocument;
 
 import java.util.Collection;
 import java.util.List;
@@ -12,6 +13,21 @@ import java.util.Set;
 public interface ChunkRepository {
 
     void upsert(Collection<Chunk> chunks);
+
+    /**
+     * Documents dont les chunks ne sont rattachés à aucun nœud (node_ids vide), les plus
+     * gros d'abord (impact maximal sur le ratio de rattachement). Alimente l'enrichissement
+     * LLM nocturne du graphe.
+     */
+    List<UnattachedDocument> unattachedDocuments(int limit);
+
+    /**
+     * Rattache tous les chunks d'un document aux nœuds donnés (colonne node_ids) — upsert
+     * only, sans ré-embedding.
+     *
+     * @return nombre de chunks mis à jour
+     */
+    int attachToNodes(String source, String path, Set<String> nodeIds);
 
     /** Version indexée d'un document ({@code null} si jamais indexé) — évite le re-embedding inutile. */
     Optional<String> indexedVersion(String source, String path);
