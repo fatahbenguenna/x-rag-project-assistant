@@ -24,10 +24,11 @@ class NightlyBatchServiceTest {
     private final ProjectSheetService sheets = mock(ProjectSheetService.class);
     private final SmokeTestService smoke = mock(SmokeTestService.class);
     private final GraphQualityService graphQuality = mock(GraphQualityService.class);
+    private final GraphEnrichmentService enrichment = mock(GraphEnrichmentService.class);
     private final Notifier notifier = mock(Notifier.class);
 
     private final NightlyBatchService batch = new NightlyBatchService(
-            jdbc, embeddings, sync, maintenance, sheets, smoke, graphQuality, notifier);
+            jdbc, embeddings, sync, maintenance, sheets, smoke, graphQuality, enrichment, false, notifier);
 
     @Test
     void healthCheckEnEchecAlerteEtAbandonne() {

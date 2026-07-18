@@ -21,6 +21,9 @@ public class NightlyBatchService {
 
     private static final Logger log = LoggerFactory.getLogger(NightlyBatchService.class);
 
+    /** Plafond de documents enrichis par nuit (budget de temps du batch) ; le reste suit les nuits suivantes. */
+    private static final int MAX_ENRICHMENT_DOCS = 150;
+
     private final JdbcTemplate jdbc;
     private final EmbeddingModel embeddingModel;
     private final SyncService syncService;
@@ -28,12 +31,15 @@ public class NightlyBatchService {
     private final ProjectSheetService projectSheets;
     private final SmokeTestService smokeTests;
     private final GraphQualityService graphQuality;
+    private final GraphEnrichmentService graphEnrichment;
+    private final boolean llmEnrichmentEnabled;
     private final Notifier notifier;
 
     public NightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                SyncService syncService, MaintenanceRepository maintenance,
                                ProjectSheetService projectSheets, SmokeTestService smokeTests,
-                               GraphQualityService graphQuality, Notifier notifier) {
+                               GraphQualityService graphQuality, GraphEnrichmentService graphEnrichment,
+                               boolean llmEnrichmentEnabled, Notifier notifier) {
         this.jdbc = jdbc;
         this.embeddingModel = embeddingModel;
         this.syncService = syncService;
@@ -41,6 +47,8 @@ public class NightlyBatchService {
         this.projectSheets = projectSheets;
         this.smokeTests = smokeTests;
         this.graphQuality = graphQuality;
+        this.graphEnrichment = graphEnrichment;
+        this.llmEnrichmentEnabled = llmEnrichmentEnabled;
         this.notifier = notifier;
     }
 
@@ -64,6 +72,8 @@ public class NightlyBatchService {
             log.info("Réconciliation : {} nœuds orphelins purgés", purged);
             maintenance.vacuumAnalyze();
 
+            enrichGraphIfNeeded();
+
             projectSheets.refreshAll();
             String graphVerdict = graphQuality.evaluate().verdict();
             String smokeReport = smokeTests.run();
@@ -80,6 +90,24 @@ public class NightlyBatchService {
             notifier.alert("Batch nocturne en échec",
                     "Étape interrompue : " + e.getMessage() + " — l'index déjà servi reste intact.");
         }
+    }
+
+    /**
+     * Enrichissement LLM du graphe (décision d'architecture n°10) : uniquement si activé
+     * (config) ET si l'éval montre le trou de rattachement — sinon l'extraction déterministe
+     * suffit et on n'ajoute pas de coût LLM.
+     */
+    private void enrichGraphIfNeeded() {
+        if (!llmEnrichmentEnabled) {
+            return;
+        }
+        var metrics = graphQuality.evaluate().metrics();
+        if (metrics.linkedChunkRatio() >= GraphQualityService.MIN_LINKED_CHUNK_RATIO) {
+            return;
+        }
+        log.info("Enrichissement LLM du graphe (décision 10, {}% de chunks rattachés) : {}",
+                Math.round(metrics.linkedChunkRatio() * 100),
+                graphEnrichment.enrich(MAX_ENRICHMENT_DOCS));
     }
 
     /** Postgres + Ollama (embedding minimal) doivent répondre avant de toucher à l'index. */

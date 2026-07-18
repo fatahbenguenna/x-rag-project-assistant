@@ -30,7 +30,7 @@ public record TeamConfig(
         aliases = aliases == null ? Map.of() : Map.copyOf(aliases);
         synonyms = synonyms == null ? Map.of() : Map.copyOf(synonyms);
         schedule = schedule == null ? new Schedule(null) : schedule;
-        extractors = extractors == null ? new Extractors(true, true, false) : extractors;
+        extractors = extractors == null ? new Extractors(true, true, false, false) : extractors;
     }
 
     public record Llm(
@@ -69,6 +69,10 @@ public record TeamConfig(
         }
     }
 
-    public record Extractors(boolean java, boolean typescript, boolean python) {
+    /**
+     * @param llm enrichissement LLM nocturne du graphe (décision d'architecture n°10) : à
+     *            n'activer que si l'éval de qualité montre des trous (chunks non rattachés)
+     */
+    public record Extractors(boolean java, boolean typescript, boolean python, boolean llm) {
     }
 }

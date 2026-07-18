@@ -74,7 +74,7 @@ _Ce fichier contient les règles et patterns critiques que les agents IA doivent
 - Index HNSW : jamais de rebuild — `VACUUM ANALYZE` seulement
 - Secrets **uniquement** en variables d'environnement (`.env`) ; jamais dans `team-config.yml` ni `application.yml`
 - **Aucun nom de projet/équipe en dur** dans le code — tout vient de `team-config.yml` (produit exportable)
-- Extraction de relations : **déterministe d'abord** (regex, JavaParser, parsing TS) ; extraction LLM nocturne seulement si l'éval `/api/admin/graph-quality` montre des trous
+- Extraction de relations : **déterministe d'abord** (regex, JavaParser, parsing TS) ; **extraction LLM nocturne** (nœuds `TOPIC` + alias pour les documents non rattachés) activée par `extractors.llm` et déclenchée quand l'éval `/api/admin/graph-quality` montre des trous (< 50 % de chunks rattachés). Plafonnée à 150 docs/nuit ; déclenchement manuel `POST /api/admin/enrich?max=N`
 - Connecteurs et extracteurs **ne lèvent jamais** pour un document invalide (résultat vide) ; une implémentation de `Notifier` ne fait jamais échouer le batch
 - Questions factuelles/structurées (MRs, tris, comptages) via **tools SQL** (`@Tool`), pas via le RAG
 - Réponses LLM : concises (~200 mots en descriptif), **toujours citer les sources** (page/fichier/MR)

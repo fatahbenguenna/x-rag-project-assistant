@@ -5,6 +5,7 @@ import com.domwil.xrag.application.GraphQualityService;
 import com.domwil.xrag.application.IndexingProgressTracker;
 import com.domwil.xrag.application.IngestionService;
 import com.domwil.xrag.application.NightlyBatchService;
+import com.domwil.xrag.application.GraphEnrichmentService;
 import com.domwil.xrag.application.ProjectSheetService;
 import com.domwil.xrag.application.RagChatService;
 import com.domwil.xrag.application.SmokeTestService;
@@ -105,8 +106,11 @@ public class JobsConfiguration implements SchedulingConfigurer {
     public NightlyBatchService nightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                                    SyncService syncService, MaintenanceRepository maintenance,
                                                    ProjectSheetService projectSheets, SmokeTestService smokeTests,
-                                                   GraphQualityService graphQuality, Notifier notifier) {
+                                                   GraphQualityService graphQuality,
+                                                   GraphEnrichmentService graphEnrichment,
+                                                   TeamConfig config, Notifier notifier) {
         return new NightlyBatchService(jdbc, embeddingModel, syncService, maintenance,
-                projectSheets, smokeTests, graphQuality, notifier);
+                projectSheets, smokeTests, graphQuality, graphEnrichment,
+                config.extractors().llm(), notifier);
     }
 }

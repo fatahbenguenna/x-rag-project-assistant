@@ -52,3 +52,8 @@ extractors:
   java: true
   typescript: true
   python: false
+  # Enrichissement LLM nocturne du graphe (décision d'architecture n°10) : à n'activer
+  # que si l'éval de qualité signale < 50% de chunks rattachés (« Trous détectés » dans
+  # le rapport du batch). Le LLM crée des nœuds TOPIC pour les documents non couverts par
+  # les extracteurs déterministes, refermant le pont RAG↔graphe. Coûteux : plafonné/nuit.
+  llm: false
