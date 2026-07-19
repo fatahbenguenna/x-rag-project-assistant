@@ -15,15 +15,15 @@ Exemples de questions cibles : "explique-moi le projet Elog en 5 principes", "co
 ## Décisions d'architecture (validées, ne pas rediscuter)
 
 1. **Hébergement centralisé** : une instance par équipe (Docker Compose autonome), pas de multi-tenant, pas de distribution sur chaque poste.
-2. **LLM** : Ollama + `qwen2.5:7b-instruct` (Q4) par défaut ; fallback `qwen2.5:3b` pour questions descriptives. Architecture **commutable** via `ChatClient` Spring AI : profil `ollama` (local, confidentiel) ou `gemini`/endpoint OpenAI-compatible (si politique de confidentialité OK). Routage possible par type de question.
+2. **LLM** : Ollama + `qwen2.5:7b-instruct` (Q4) par défaut (fallback `qwen2.5:3b` **retiré** — un seul modèle). Architecture **commutable** via `ChatClient` Spring AI : profil `ollama` (local, confidentiel) ou `gemini`/endpoint OpenAI-compatible (si politique de confidentialité OK). Ollama lui-même est **commutable conteneur / natif hôte (GPU) / WSL** via `.env` (`OLLAMA_BASE_URL` + `COMPOSE_PROFILES`, profil `ollama-docker` pour le conteneur). Options Ollama : `num_ctx=8192` (la fenêtre 2048 par défaut tronquait le prompt RAG → hedging) et `temperature=0.1`.
 3. **Embeddings** : `bge-m3` via Ollama (multilingue FR + code), toujours en local.
 4. **Vector store + graphe** : PostgreSQL + pgvector. Le graphe vit dans Postgres (tables `graph_nodes` / `graph_edges`), pas de Neo4j. Requêtes de voisinage via `WITH RECURSIVE` (profondeur 2).
 5. **GraphRAG hybride** : retrieval = (1) détection d'entités via table d'alias, (2) expansion graphe profondeur 2, (3) sous-graphe sérialisé en texte compact injecté au prompt, (4) recherche vectorielle boostée par les chunks rattachés aux nœuds du sous-graphe. Recherche hybride vecteur + full-text (`tsvector`), filtre métadonnées par projet.
-6. **Tools (function calling)** pour les questions factuelles/structurées (MRs ouvertes, tris, comptages) : table SQL de métadonnées MR + tools Spring AI type `listOpenMRs(sortBy=createdAt)`. Le RAG seul répond mal à ces questions.
+6. **Tools (function calling)** pour les questions factuelles/structurées : `listMergeRequests`, `searchMergeRequests` (par sujet, avec synonymes métier↔code de `team-config.synonyms`), `countMergeRequests` (table SQL de métadonnées MR), et `searchKnowledgeBase` (recherche plein-texte déterministe `tsvector` sur tous les chunks). Le RAG seul répond mal aux questions structurées. **Nuance apprise** : le function-calling d'un 7B est peu fiable → la pré-injection hybride reste le **socle garanti**, les tools sont un **filet** (le prompt incite à appeler `searchKnowledgeBase` quand les extraits ne suffisent pas).
 7. **Fiches projet pré-calculées** : job nocturne qui génère par projet une synthèse structurée (stack, architecture, modèle de données, endpoints, events publiés/consommés, dépendances issues du graphe). Indexées comme documents premium. Indispensables pour les réponses <20 s.
 8. **Streaming obligatoire** sur l'endpoint chat (premier token ~2-5 s en CPU).
-9. **Migrations : Liquibase** (choix explicite de Hassen, PAS Flyway).
-10. **Extraction de relations : déterministe d'abord** (regex, JavaParser, parsing TS), LLM nocturne seulement si l'éval montre des trous.
+9. **Migrations : Liquibase** (choix explicite de Hassen, PAS Flyway). Changelog maître en **XML** (`db.changelog-master.xml`), changesets DDL en **SQL** (`.sql`). Jamais de YAML/JSON.
+10. **Extraction de relations : déterministe d'abord** (regex, JavaParser, parsing TS). **Extraction LLM nocturne IMPLÉMENTÉE** (`GraphEnrichmentService`) : pour les documents non rattachés ou sans nœud `TOPIC` (surtout hors Java/TS), le LLM extrait des sujets → nœuds `TOPIC` + alias (retrouvables) → rattachement des chunks. Activée par `extractors.llm`, déclenchée quand l'éval `/api/admin/graph-quality` montre < 50 % de chunks rattachés ; plafonnée par nuit. Déclenchement manuel : `POST /api/admin/enrich[?sources=confluence,jira]`.
 
 ## Modèle de graphe
 
@@ -66,6 +66,8 @@ Extraction déterministe :
 9. Smoke test automatique (questions canoniques instanciées depuis la config) + notification.
 10. 07:30 warm-up modèle (`OLLAMA_KEEP_ALIVE=24h` recommandé).
 
+> Étape ajoutée (décision 10) : après le VACUUM et avant les fiches projet, si `extractors.llm` est actif **et** que l'éval montre < 50 % de chunks rattachés, **enrichissement LLM du graphe** (nœuds `TOPIC`), plafonné à ~150 docs/nuit.
+
 En journée : webhooks GitLab (push + merge_request events) → upsert temps réel. Confluence reste à J-1.
 
 ## Exportabilité
@@ -82,12 +84,14 @@ sources:
   gitlab: { base-url: ..., group: passerelle, branches: [main, develop] }  # découverte auto des repos du groupe
   jira: { base-url: ..., projects: [PASS, INFRA] }
 aliases:
-  easyloc: ["Easy Loc", "easy-loc", "EASYLOC"]
+  easyloc: ["Easy Loc", "easy-loc", "EASYLOC"]   # -> nœuds project: du graphe
+synonyms:
+  pos: ["caisse"]                                 # métier<->code pour searchMergeRequests (n'affecte pas le graphe)
 schedule: { nightly: "0 0 2 * * *" }
-extractors: { java: true, typescript: true, python: false }
+extractors: { java: true, typescript: true, python: false, llm: false }  # llm = enrichissement TOPIC nocturne (décision 10)
 ```
 
-- Secrets en variables d'environnement (`.env`), jamais dans le YAML.
+- Secrets en variables d'environnement (`.env`), jamais dans le YAML. Voir `.env.example` pour le mode Ollama (`OLLAMA_BASE_URL`, `COMPOSE_PROFILES`) et les 5 modes d'auth Atlassian (cookie / basic / bearer / scoped / oauth, bi-plateforme Cloud + Data Center).
 - Interfaces plugin : `SourceConnector` (Confluence/GitLab/Jira) et `RelationExtractor` (Java/TS/...), activées par config. Architecture hexagonale : connecteurs = adapters, pipeline d'ingestion = domaine.
 - Images Docker versionnées sur registry privé (registry self-hosted + Tailscale de Hassen). Les équipes font `docker compose pull && up -d` ; Liquibase migre au démarrage.
 - Onboarding cible < 1 h : clone → `.env` → `team-config.yml` → `docker compose up` → `./bootstrap.sh` (indexation initiale, 3-6 h la première nuit) → smoke test.
@@ -97,13 +101,13 @@ extractors: { java: true, typescript: true, python: false }
 - Backend : Java 21, Spring Boot, Spring AI (starters ollama + vertex-ai-gemini + pgvector), Liquibase, architecture hexagonale/DDD (voir skill `ddd-clean-architecture` si disponible).
 - Base : PostgreSQL 16 + pgvector (image `pgvector/pgvector:pg16`), index HNSW.
 - UI : Open WebUI au départ (ou front Angular custom ensuite).
-- Compose services : `ollama`, `postgres`, `rag-api`, `open-webui` (optionnel).
+- Compose services : `postgres` + `rag-api` (base) ; `ollama` (profil `ollama-docker`, optionnel — sinon Ollama natif/WSL) ; `open-webui` (profil `ui`, optionnel).
 - Contexte matériel de référence : Ryzen 7, 32 Go RAM partagée iGPU → inférence CPU, ~10-20 tokens/s en génération 7B Q4.
 
 ## Dépôt GitHub et plan de PRs
 
 - Dépôt : **`fatahbenguenna/x-rag-project-assistant`** (privé, compte utilisateur GitHub — l'option Domwil-Sarl initialement envisagée n'a pas été retenue).
-- Workflow : une PR par étape, mergée avant d'ouvrir la suivante — **plan entièrement déroulé** (PRs #1 à #7 mergées, puis #9 bump Spring Boot 3.5.16 et #10 migration Spring Boot 4.1 + Spring AI 2.0) :
+- Workflow : une PR par étape, mergée avant d'ouvrir la suivante. **Socle #1-#7 livré**, puis #9 bump Spring Boot 3.5.16 et #10 migration Spring Boot 4.1 + Spring AI 2.0 :
   1. `chore: bootstrap` — structure du repo, docker-compose, README d'onboarding, `.env.example`
   2. `feat: config` — `team-config.example.yml` + `@ConfigurationProperties`
   3. `feat: schema` — changelogs **Liquibase** (pgvector, chunks, graph_nodes/edges, métadonnées MR)
@@ -111,7 +115,20 @@ extractors: { java: true, typescript: true, python: false }
   5. `feat: extractors` — plugins Java/TS + résolution d'alias
   6. `feat: retrieval` — recherche hybride vecteur + graphe + tools, endpoint chat streamé
   7. `feat: nightly` — jobs schedulés, fiches projet, smoke tests, bootstrap.sh
-- Auth : fine-grained PAT, resource owner fatahbenguenna, permissions Administration (write) + Contents (write) + Pull requests (write), expiration courte, révocation après usage.
+
+### Évolutions livrées (brownfield, post-socle)
+
+- **Auth Atlassian multi-mode** (#22) : 5 modes (cookie / basic / bearer / scoped / oauth) résolus par `AtlassianConnectionFactory`, bi-plateforme **Cloud (API v2/v3) + Data Center (v1/v2)**. Migration des dépréciations Cloud (Jira `/2/search`→`/3/search/jql`, Confluence v1→v2).
+- **Robustesse chat** : chat réactif WebFlux — retrieval bloquant isolé sur `boundedElastic` (#23) ; tokens d'usage OpenAI exposés + contexte réduit (#25) ; correctif NPE sur paramètre de tool primitif (#28).
+- **Recherche MR par sujet** (#26) : tool `searchMergeRequests` (scoring titre×3/corps×1, frontière de mot) + `synonyms` métier↔code (`caisse`↔`pos`).
+- **Dashboard de monitoring** de l'indexation (#24, `/dashboard.html`).
+- **Ollama commutable** conteneur / natif hôte / WSL via `.env` (#27).
+- **Liquibase** : master YAML → **XML**, changesets SQL (#29). `full=true` force la ré-indexation.
+- **Enrichissement LLM du graphe** (#30, décision 10) : nœuds `TOPIC` + alias pour les docs non rattachés ; étendu aux docs Confluence/Jira déjà rattachés + **indexation des commentaires** Jira/Confluence (#31). Endpoints `/api/admin/enrich`, `/api/admin/sync?source=`.
+- **Qualité des réponses** : correctif **hedging** (#32) — prompt « le contexte fait autorité » + `num_ctx=8192` (la fenêtre 2048 tronquait les sources) + température 0.1 ; **tool `searchKnowledgeBase`** de recherche plein-texte déterministe (#33) + incitation à l'appeler sur un miss (#34).
+- **Diagnostic assisté d'un expert RAG** (sous-agent ponctuel) : a identifié la troncature `num_ctx` comme vraie cause du hedging, et écarté LangChain4j (aucun gain vs Spring AI 2.0). Un agent réutilisable `rag-expert` n'a pas été installé.
+
+- Auth GitHub : fine-grained PAT, resource owner fatahbenguenna, permissions Administration (write) + Contents (write) + Pull requests (write), expiration courte, révocation après usage.
 
 ## Attentes de performance (cadrage validé)
 
@@ -121,7 +138,7 @@ extractors: { java: true, typescript: true, python: false }
 | Résumé projet (via fiche) | 15-25 s complet, 1er token ~5 s |
 | Synthèse trans-projets A×B | 45-90 s streamé (incompressible sans GPU ou API distante) |
 
-Prompt système : réponses concises, max ~200 mots pour le descriptif, toujours citer les sources (page/fichier/MR).
+Prompt système (`LlmConfiguration.SYSTEM_PROMPT`) : réponses concises (~200 mots pour le descriptif), toujours citer les sources (page/fichier/MR/issue). **Anti-hedging** : le contexte fourni fait autorité, l'assistant EST l'interface (ne jamais renvoyer vers l'outil externe), règle absolue « si une source correspond, commence par Oui » ; appeler `searchKnowledgeBase` si les extraits ne suffisent pas avant de conclure à une absence.
 
 ## Effort estimé
 
