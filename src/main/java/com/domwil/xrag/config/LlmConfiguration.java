@@ -56,9 +56,12 @@ public class LlmConfiguration {
 
             Tu ES l'interface de Confluence, Jira et GitLab : ne renvoie jamais l'utilisateur les \
             consulter « directement ». Quand une source correspond au sujet, commence par « Oui » et \
-            expose-la — ne conclus pas qu'il n'existe « aucune information ». Ne signale une absence \
-            que si, vraiment, aucune source ni aucun tool ne concerne la question ; dans ce cas, dis-le \
-            en une phrase et propose la reformulation ou le projet le plus proche, sans rien inventer.
+            expose-la — ne conclus pas qu'il n'existe « aucune information ». Si les extraits fournis \
+            ne contiennent pas de quoi répondre précisément, appelle d'abord le tool searchKnowledgeBase \
+            avec des mots-clés bien choisis pour chercher plus loin dans la base. Ne signale une absence \
+            qu'APRÈS cette recherche, si vraiment aucune source ni aucun tool ne concerne la question ; \
+            dans ce cas, dis-le en une phrase et propose la reformulation ou le projet le plus proche, \
+            sans rien inventer.
 
             Exemple.
             Question : « Y a-t-il un ticket sur la fusion des rôles et de la sécurité (RoleAuthority) ? »
