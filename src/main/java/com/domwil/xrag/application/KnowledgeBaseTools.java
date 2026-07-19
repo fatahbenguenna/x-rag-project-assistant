@@ -2,6 +2,8 @@ package com.domwil.xrag.application;
 
 import com.domwil.xrag.domain.model.ScoredChunk;
 import com.domwil.xrag.domain.port.ChunkRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -13,6 +15,8 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * source hors du top-K quand les extraits fournis ne suffisent pas.
  */
 public class KnowledgeBaseTools {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseTools.class);
 
     private static final int DEFAULT_LIMIT = 5;
     private static final int MAX_LIMIT = 10;
@@ -42,6 +46,7 @@ public class KnowledgeBaseTools {
                 keywords,
                 project == null || project.isBlank() ? null : project,
                 limit == null || limit < 1 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT));
+        log.info("Tool searchKnowledgeBase appelé (« {} ») : {} extrait(s)", keywords, results.size());
         if (results.isEmpty()) {
             return "Aucun document indexé ne mentionne « " + keywords + " ».";
         }
