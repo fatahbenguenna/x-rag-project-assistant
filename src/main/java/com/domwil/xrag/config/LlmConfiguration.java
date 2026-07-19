@@ -4,6 +4,7 @@ import com.domwil.xrag.adapter.out.llm.LlmTopicExtractor;
 import com.domwil.xrag.application.AliasResolver;
 import com.domwil.xrag.application.EntityDetector;
 import com.domwil.xrag.application.GraphEnrichmentService;
+import com.domwil.xrag.application.KnowledgeBaseTools;
 import com.domwil.xrag.application.MergeRequestTools;
 import com.domwil.xrag.application.ModelRouter;
 import com.domwil.xrag.application.RagChatService;
@@ -111,6 +112,11 @@ public class LlmConfiguration {
     }
 
     @Bean
+    public KnowledgeBaseTools knowledgeBaseTools(ChunkRepository chunks) {
+        return new KnowledgeBaseTools(chunks);
+    }
+
+    @Bean
     public ModelRouter modelRouter(TeamConfig config) {
         // Le fallback ne s'applique qu'en local : sur un provider distant, le
         // modèle principal est déjà rapide et le nom qwen n'aurait aucun sens.
@@ -122,9 +128,9 @@ public class LlmConfiguration {
     public RagChatService ragChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                                          EntityDetector entityDetector, GraphSearchRepository graphSearch,
                                          ChunkRepository chunks, MergeRequestTools mergeRequestTools,
-                                         ModelRouter modelRouter) {
+                                         KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter) {
         return new RagChatService(chatClient, embeddingModel, entityDetector, graphSearch,
-                chunks, mergeRequestTools, modelRouter);
+                chunks, mergeRequestTools, knowledgeBaseTools, modelRouter);
     }
 
     private static <T extends ChatModel> T require(T model, String provider) {

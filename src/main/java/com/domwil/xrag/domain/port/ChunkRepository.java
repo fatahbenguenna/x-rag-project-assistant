@@ -55,4 +55,13 @@ public interface ChunkRepository {
      */
     List<ScoredChunk> hybridSearch(float[] embedding, String query, Set<String> boostNodeIds,
                                    String project, int limit);
+
+    /**
+     * Recherche plein-texte déterministe (tsvector français) sur tous les chunks, indépendante
+     * de l'embedding. Alimente le tool {@code searchKnowledgeBase} : le LLM reformule la demande
+     * en mots-clés et récupère des extraits sourcés (complément au retrieval pré-injecté).
+     *
+     * @param project filtre métadonnées ({@code null} = toutes sources/projets)
+     */
+    List<ScoredChunk> keywordSearch(String query, String project, int limit);
 }
