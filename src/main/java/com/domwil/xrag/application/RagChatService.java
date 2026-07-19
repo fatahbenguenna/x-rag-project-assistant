@@ -50,18 +50,20 @@ public class RagChatService {
     private final GraphSearchRepository graphSearch;
     private final ChunkRepository chunks;
     private final MergeRequestTools mergeRequestTools;
+    private final KnowledgeBaseTools knowledgeBaseTools;
     private final ModelRouter modelRouter;
 
     public RagChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                           EntityDetector entityDetector, GraphSearchRepository graphSearch,
                           ChunkRepository chunks, MergeRequestTools mergeRequestTools,
-                          ModelRouter modelRouter) {
+                          KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter) {
         this.chatClient = chatClient;
         this.embeddingModel = embeddingModel;
         this.entityDetector = entityDetector;
         this.graphSearch = graphSearch;
         this.chunks = chunks;
         this.mergeRequestTools = mergeRequestTools;
+        this.knowledgeBaseTools = knowledgeBaseTools;
         this.modelRouter = modelRouter;
     }
 
@@ -112,7 +114,9 @@ public class RagChatService {
         var routed = modelRouter.route(question);
         // Descriptif → modèle fallback léger, sans tools (les petits modèles sont
         // peu fiables en function calling et le descriptif n'en a pas besoin).
-        spec = routed != null ? spec.options(routed) : spec.tools(mergeRequestTools);
+        // Modèle principal → tools MRs + recherche plein-texte de la base de connaissances.
+        spec = routed != null ? spec.options(routed)
+                : spec.tools(mergeRequestTools, knowledgeBaseTools);
         return spec.stream()
                 .chatResponse();
     }

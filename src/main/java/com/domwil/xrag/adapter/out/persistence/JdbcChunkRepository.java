@@ -152,4 +152,24 @@ public class JdbcChunkRepository implements ChunkRepository {
                 nodeIds, project, project, CANDIDATES_PER_CHANNEL,
                 vector, query, nodeIds, limit);
     }
+
+    @Override
+    public List<ScoredChunk> keywordSearch(String query, String project, int limit) {
+        // websearch_to_tsquery : robuste sur une saisie libre du LLM (guillemets, or, -).
+        // Full-text seul (index GIN rag_chunks_tsv_gin), sans embedding : déterministe et rapide.
+        return jdbc.query("""
+                        SELECT id, source, project, path, title, content, url,
+                               ts_rank(tsv, websearch_to_tsquery('french', ?)) AS score
+                        FROM rag_chunks
+                        WHERE tsv @@ websearch_to_tsquery('french', ?)
+                          AND (?::text IS NULL OR project = ?)
+                        ORDER BY score DESC
+                        LIMIT ?
+                        """,
+                (rs, i) -> new ScoredChunk(
+                        rs.getString("id"), rs.getString("source"), rs.getString("project"),
+                        rs.getString("path"), rs.getString("title"), rs.getString("content"),
+                        rs.getString("url"), rs.getDouble("score")),
+                query, query, project, project, limit);
+    }
 }
