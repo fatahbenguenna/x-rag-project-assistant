@@ -72,7 +72,9 @@ public class SyncService {
             var documents = connector.fetchChangedSince(since);
             int indexed = 0;
             for (var doc : documents) {
-                if (ingestion.ingest(doc)) {
+                // full=true force la ré-indexation (récupère les changements d'extraction, ex.
+                // commentaires, même si la version source n'a pas bougé).
+                if (ingestion.ingest(doc, java.util.Set.of(), full)) {
                     indexed++;
                 }
             }

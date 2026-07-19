@@ -40,11 +40,19 @@ public class IngestionService {
 
     /** @return true si le document a été (ré)indexé, false s'il était déjà à jour. */
     public boolean ingest(SourceDocument doc) {
-        return ingest(doc, Set.of());
+        return ingest(doc, Set.of(), false);
     }
 
     public boolean ingest(SourceDocument doc, Set<String> extraNodeIds) {
-        if (doc.version() != null
+        return ingest(doc, extraNodeIds, false);
+    }
+
+    /**
+     * @param force ré-indexe même si la version est inchangée — nécessaire après un changement
+     *              d'extraction (ex. ajout des commentaires) qui ne bump pas la version source.
+     */
+    public boolean ingest(SourceDocument doc, Set<String> extraNodeIds, boolean force) {
+        if (!force && doc.version() != null
                 && doc.version().equals(chunks.indexedVersion(doc.source(), doc.path()).orElse(null))) {
             return false; // version inchangée : pas de re-embedding
         }

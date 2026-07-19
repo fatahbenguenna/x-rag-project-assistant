@@ -31,7 +31,7 @@ public class JiraConnector implements SourceConnector {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC);
     private static final int PAGE_SIZE = 100;
     private static final String FIELDS =
-            "summary,description,status,issuetype,project,labels,created,updated,issuelinks";
+            "summary,description,status,issuetype,project,labels,created,updated,issuelinks,comment";
 
     private final RestClient http;
     private final TeamConfig.Jira config;
@@ -155,16 +155,34 @@ public class JiraConnector implements SourceConnector {
 
         String summary = fields.path("summary").asText("");
         String description = extractText(fields.path("description"));
+        String comments = extractComments(fields.path("comment"));
         return new SourceDocument(
                 SOURCE,
                 null,
                 key,
                 key + " — " + summary,
-                (summary + "\n\n" + description).strip(),
+                (summary + "\n\n" + description + comments).strip(),
                 config.baseUrl() + "/browse/" + key,
                 fields.path("updated").asText(null),
                 parseInstant(fields.path("updated").asText(null)),
                 metadata);
+    }
+
+    /** Concatène les commentaires de l'issue (auteur + corps) — souvent le siège des décisions. */
+    private static String extractComments(JsonNode commentField) {
+        JsonNode comments = commentField.path("comments");
+        if (!comments.isArray() || comments.isEmpty()) {
+            return "";
+        }
+        var sb = new StringBuilder("\n\n## Commentaires");
+        for (JsonNode comment : comments) {
+            String author = comment.path("author").path("displayName").asText("");
+            String body = extractText(comment.path("body"));
+            if (!body.isBlank()) {
+                sb.append("\n- ").append(author.isBlank() ? "" : author + " : ").append(body);
+            }
+        }
+        return sb.toString();
     }
 
     /**

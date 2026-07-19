@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -44,7 +45,7 @@ class SyncServiceTest {
         when(connector.source()).thenReturn("confluence");
         when(connector.fetchChangedSince(any())).thenReturn(
                 List.of(document("confluence", "page-1"), document("confluence", "page-2")));
-        when(ingestion.ingest(any())).thenReturn(true);
+        when(ingestion.ingest(any(), any(), anyBoolean())).thenReturn(true);
 
         syncServiceWith(connector).syncAll(true);
 

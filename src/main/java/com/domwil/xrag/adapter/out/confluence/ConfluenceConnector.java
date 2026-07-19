@@ -6,6 +6,8 @@ import com.domwil.xrag.adapter.out.atlassian.AtlassianPlatform;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.SourceConnector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 
@@ -28,6 +30,7 @@ public class ConfluenceConnector implements SourceConnector {
 
     public static final String SOURCE = "confluence";
 
+    private static final Logger log = LoggerFactory.getLogger(ConfluenceConnector.class);
     private static final int PAGE_SIZE = 50;
     private static final DateTimeFormatter CQL_DATE =
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneOffset.UTC);
@@ -125,17 +128,46 @@ public class ConfluenceConnector implements SourceConnector {
 
     private SourceDocument toCloudDocument(String spaceKey, JsonNode page) {
         JsonNode version = page.path("version");
+        String pageId = page.path("id").asText();
         String storage = page.path("body").path("storage").path("value").asText("");
         return new SourceDocument(
                 SOURCE,
                 null,
-                page.path("id").asText(),
+                pageId,
                 page.path("title").asText(),
-                HtmlText.toText(storage),
+                HtmlText.toText(storage) + fetchCloudComments(pageId),
                 config.baseUrl() + page.path("_links").path("webui").asText(),
                 version.path("number").asText(),
                 parseInstant(version.path("createdAt").asText(null)),
                 Map.of("space", spaceKey));
+    }
+
+    /** Commentaires de bas de page (footer) d'une page Cloud, ajoutés au contenu indexé. */
+    private String fetchCloudComments(String pageId) {
+        try {
+            JsonNode response = http.get()
+                    .uri(uri -> uri.path("/api/v2/pages/{id}/footer-comments")
+                            .queryParam("body-format", "storage")
+                            .queryParam("limit", 100)
+                            .build(pageId))
+                    .retrieve()
+                    .body(JsonNode.class);
+            JsonNode results = response == null ? null : response.path("results");
+            if (results == null || !results.isArray() || results.isEmpty()) {
+                return "";
+            }
+            var sb = new StringBuilder("\n\n## Commentaires");
+            for (JsonNode comment : results) {
+                String text = HtmlText.toText(comment.path("body").path("storage").path("value").asText(""));
+                if (!text.isBlank()) {
+                    sb.append("\n- ").append(text);
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("Commentaires Confluence indisponibles pour la page {} : {}", pageId, e.getMessage());
+            return "";
+        }
     }
 
     private static String nextCursor(JsonNode page) {

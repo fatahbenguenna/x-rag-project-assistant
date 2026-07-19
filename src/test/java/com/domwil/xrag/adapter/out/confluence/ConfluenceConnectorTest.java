@@ -45,6 +45,11 @@ class ConfluenceConnectorTest {
                "body":{"storage":{"value":"<p>V</p>"}},"_links":{"webui":"/x/2"}}],
              "_links":{"next":"/wiki/api/v2/pages?space-id=123&cursor=CURX"}}""";
 
+    private static final String COMMENTS = """
+            {"results":[{"body":{"storage":{"value":"<p>Décision importante</p>"}}}]}""";
+    private static final String NO_COMMENTS = """
+            {"results":[]}""";
+
     // --- Data Center (API v1, CQL) ---
     private static final String V1_RESULTS = """
             {"results":[{"id":"111","title":"Page DC",
@@ -65,14 +70,19 @@ class ConfluenceConnectorTest {
         server.expect(requestTo(containsString("/api/v2/pages")))
                 .andExpect(queryParam("space-id", "123"))
                 .andRespond(withSuccess(PAGES_1, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("/pages/65735/footer-comments")))
+                .andRespond(withSuccess(COMMENTS, MediaType.APPLICATION_JSON));
         server.expect(queryParam("cursor", "CUR2"))
                 .andRespond(withSuccess(PAGES_2, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("/pages/65800/footer-comments")))
+                .andRespond(withSuccess(NO_COMMENTS, MediaType.APPLICATION_JSON));
 
         var docs = connector.fetchChangedSince(null);
 
         assertThat(docs).hasSize(2);
         assertThat(docs.get(0).path()).isEqualTo("65735");
-        assertThat(docs.get(0).content()).contains("Contenu A");
+        assertThat(docs.get(0).content()).contains("Contenu A")
+                .contains("Commentaires").contains("Décision importante");
         assertThat(docs.get(0).url()).isEqualTo(CLOUD + "/spaces/FPSSUITE/pages/65735/Page+A");
         assertThat(docs.get(0).metadata()).containsEntry("space", "FPSSUITE");
         server.verify();
@@ -88,6 +98,8 @@ class ConfluenceConnectorTest {
                 .andRespond(withSuccess(SPACE, MediaType.APPLICATION_JSON));
         server.expect(requestTo(containsString("/api/v2/pages")))
                 .andRespond(withSuccess(PAGES_MIXED, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("/pages/1/footer-comments")))
+                .andRespond(withSuccess(NO_COMMENTS, MediaType.APPLICATION_JSON));
 
         var docs = connector.fetchChangedSince(Instant.parse("2026-07-12T00:00:00Z"));
 
