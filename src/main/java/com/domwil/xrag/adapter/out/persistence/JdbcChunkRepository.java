@@ -119,6 +119,7 @@ public class JdbcChunkRepository implements ChunkRepository {
                                           String project, int limit) {
         String vector = PgArrays.vector(embedding);
         String nodeIds = PgArrays.textArray(boostNodeIds);
+        String tsQuery = orTsQuery(query);
         return jdbc.query("""
                         WITH candidates AS (
                             (SELECT id FROM rag_chunks
@@ -126,7 +127,8 @@ public class JdbcChunkRepository implements ChunkRepository {
                              ORDER BY embedding <=> ?::vector LIMIT ?)
                             UNION
                             (SELECT id FROM rag_chunks
-                             WHERE tsv @@ plainto_tsquery('french', ?) AND (?::text IS NULL OR project = ?)
+                             WHERE tsv @@ to_tsquery('french', NULLIF(?, '')) AND (?::text IS NULL OR project = ?)
+                             ORDER BY ts_rank(tsv, to_tsquery('french', NULLIF(?, ''))) DESC
                              LIMIT ?)
                             UNION
                             (SELECT id FROM rag_chunks
@@ -135,7 +137,7 @@ public class JdbcChunkRepository implements ChunkRepository {
                         )
                         SELECT c.id, c.source, c.project, c.path, c.title, c.content, c.url,
                                (1 - (c.embedding <=> ?::vector)) * 0.6
-                               + LEAST(COALESCE(ts_rank(c.tsv, plainto_tsquery('french', ?)), 0), 1.0) * 0.25
+                               + LEAST(COALESCE(ts_rank(c.tsv, to_tsquery('french', NULLIF(?, ''))), 0), 1.0) * 0.25
                                + (CASE WHEN c.node_ids && ?::text[] THEN 0.3 ELSE 0 END) AS score
                         FROM rag_chunks c
                         JOIN candidates ON candidates.id = c.id
@@ -148,20 +150,23 @@ public class JdbcChunkRepository implements ChunkRepository {
                         rs.getString("path"), rs.getString("title"), rs.getString("content"),
                         rs.getString("url"), rs.getDouble("score")),
                 project, project, vector, CANDIDATES_PER_CHANNEL,
-                query, project, project, CANDIDATES_PER_CHANNEL,
+                tsQuery, project, project, tsQuery, CANDIDATES_PER_CHANNEL,
                 nodeIds, project, project, CANDIDATES_PER_CHANNEL,
-                vector, query, nodeIds, limit);
+                vector, tsQuery, nodeIds, limit);
     }
 
     @Override
     public List<ScoredChunk> keywordSearch(String query, String project, int limit) {
-        // websearch_to_tsquery : robuste sur une saisie libre du LLM (guillemets, or, -).
         // Full-text seul (index GIN rag_chunks_tsv_gin), sans embedding : déterministe et rapide.
+        String tsQuery = orTsQuery(query);
+        if (tsQuery.isEmpty()) {
+            return List.of();
+        }
         return jdbc.query("""
                         SELECT id, source, project, path, title, content, url,
-                               ts_rank(tsv, websearch_to_tsquery('french', ?)) AS score
+                               ts_rank(tsv, to_tsquery('french', ?)) AS score
                         FROM rag_chunks
-                        WHERE tsv @@ websearch_to_tsquery('french', ?)
+                        WHERE tsv @@ to_tsquery('french', ?)
                           AND (?::text IS NULL OR project = ?)
                         ORDER BY score DESC
                         LIMIT ?
@@ -170,6 +175,27 @@ public class JdbcChunkRepository implements ChunkRepository {
                         rs.getString("id"), rs.getString("source"), rs.getString("project"),
                         rs.getString("path"), rs.getString("title"), rs.getString("content"),
                         rs.getString("url"), rs.getDouble("score")),
-                query, query, project, project, limit);
+                tsQuery, tsQuery, project, project, limit);
+    }
+
+    /**
+     * tsquery OU à partir d'un texte libre : les tokens sont combinés par «&nbsp;|&nbsp;».
+     * Les fonctions plainto/websearch_to_tsquery ANDent tous les lemmes — dès qu'un
+     * terme manque d'un chunk, zéro résultat (canal lexical mort, mesuré 0 vs 1914
+     * chunks sur une requête réelle). En OU, {@code ts_rank} assure la précision : les
+     * chunks couvrant le plus de termes remontent. Lexèmes quotés (sûrs : tokens
+     * alphanumériques uniquement) ; chaîne vide → NULLIF côté SQL → aucun match, sans erreur.
+     */
+    static String orTsQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+        return java.util.Arrays.stream(query.toLowerCase(java.util.Locale.ROOT)
+                        .split("[^\\p{L}\\p{N}]+"))
+                .filter(token -> token.length() >= 2)
+                .distinct()
+                .limit(12)
+                .map(token -> "'" + token + "'")
+                .collect(java.util.stream.Collectors.joining(" | "));
     }
 }

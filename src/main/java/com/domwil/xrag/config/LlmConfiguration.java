@@ -131,9 +131,11 @@ public class LlmConfiguration {
     public RagChatService ragChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                                          EntityDetector entityDetector, GraphSearchRepository graphSearch,
                                          ChunkRepository chunks, MergeRequestTools mergeRequestTools,
-                                         KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter) {
+                                         KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter,
+                                         TeamConfig config) {
         return new RagChatService(chatClient, embeddingModel, entityDetector, graphSearch,
-                chunks, mergeRequestTools, knowledgeBaseTools, modelRouter);
+                chunks, mergeRequestTools, knowledgeBaseTools, modelRouter,
+                config.retrieval().chunkLimit(), config.retrieval().chunkExcerptChars());
     }
 
     private static <T extends ChatModel> T require(T model, String provider) {

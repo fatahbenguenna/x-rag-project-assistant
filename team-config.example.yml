@@ -45,6 +45,13 @@ synonyms:
   pos: ["caisse", "point de vente"]   # « caisse » retrouve aussi les MRs qui disent « pos »/« fps-pos »
   kds: ["cuisine", "kitchen"]
 
+# Réglages du retrieval injecté au prompt (défauts calibrés pour num_ctx=8192).
+# chunk-limit : nombre de chunks montrés au LLM ; chunk-excerpt-chars : longueur max
+# d'un extrait (1800 = chunk entier). Repli si latence CPU dégradée : 6 / 1600.
+retrieval:
+  chunk-limit: 8
+  chunk-excerpt-chars: 1800
+
 schedule:
   nightly: "0 0 2 * * *"        # cron Spring (6 champs) — batch nocturne 02:00
 
