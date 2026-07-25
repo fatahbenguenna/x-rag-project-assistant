@@ -21,6 +21,29 @@ done
 echo "    API prête."
 
 echo "==> Lancement de l'indexation initiale complète"
+# Reranker cross-encoder (optionnel : retrieval.reranker.enabled dans team-config.yml).
+# Modèle épinglé sur un commit HF (reproductible) — fichier ONNX int8 UNIQUE + tokenizer.
+if grep -qE '^\s*enabled:\s*true' team-config.yml 2>/dev/null && grep -q 'reranker:' team-config.yml; then
+  RR_REPO="onnx-community/bge-reranker-v2-m3-ONNX"
+  RR_REV="6f5ff65298512715a1e669753bc754d2bc8f367b"
+  RR_BASE="https://huggingface.co/${RR_REPO}/resolve/${RR_REV}"
+  echo "Téléchargement du modèle reranker (571 Mo, une seule fois)…"
+  # Téléchargement ATOMIQUE (.tmp puis mv) : un curl interrompu ne laisse pas de fichier
+  # partiel que le garde [ -f ] verrouillerait. Puis restart : le modèle n'est chargé
+  # qu'au démarrage de l'app (ApplicationReadyEvent), or elle a booté AVANT le download.
+  if docker compose exec -T rag-api sh -c '
+    set -e; mkdir -p /models/reranker; cd /models/reranker
+    [ -f model_quantized.onnx ] || { curl -fL "'"$RR_BASE"'/onnx/model_quantized.onnx" -o model_quantized.onnx.tmp \
+      && mv model_quantized.onnx.tmp model_quantized.onnx; }
+    [ -f tokenizer.json ] || { curl -fL "'"$RR_BASE"'/tokenizer.json" -o tokenizer.json.tmp \
+      && mv tokenizer.json.tmp tokenizer.json; }
+  '; then
+    docker compose restart rag-api
+  else
+    echo "Téléchargement reranker en échec — l'app fonctionnera sans (passe-plat)."
+  fi
+fi
+
 # ADMIN_TOKEN (si configuré) protège les POST /api/admin/**
 ADMIN_HEADER=()
 [ -n "${ADMIN_TOKEN:-}" ] && ADMIN_HEADER=(-H "X-Admin-Token: $ADMIN_TOKEN")

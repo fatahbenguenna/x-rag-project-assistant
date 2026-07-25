@@ -51,6 +51,14 @@ synonyms:
 retrieval:
   chunk-limit: 8
   chunk-excerpt-chars: 1800
+  # Reranker cross-encoder ONNX in-process (bge-reranker-v2-m3 int8, ~571 Mo) : reclasse
+  # ~40 candidats en chunk-limit sur CPU (+3-8 s/question sur la cible). Modèle téléchargé
+  # par bootstrap.sh dans le volume reranker-models. Désactivé par défaut.
+  reranker:
+    enabled: false
+    # model-path: /models/reranker
+    # candidates: 40
+    # max-length: 512
 
 # Éval du retrieval (recall@k, sans LLM — rapide et objectif) : pour chaque question
 # canonique, « expected » est une sous-chaîne (insensible à la casse) du path ou du titre

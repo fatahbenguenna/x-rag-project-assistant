@@ -31,7 +31,7 @@ public record TeamConfig(
     public TeamConfig {
         aliases = aliases == null ? Map.of() : Map.copyOf(aliases);
         synonyms = synonyms == null ? Map.of() : Map.copyOf(synonyms);
-        retrieval = retrieval == null ? new Retrieval(null, null) : retrieval;
+        retrieval = retrieval == null ? new Retrieval(null, null, null) : retrieval;
         eval = eval == null ? new Eval(List.of()) : eval;
         schedule = schedule == null ? new Schedule(null) : schedule;
         extractors = extractors == null ? new Extractors(true, true, false, false) : extractors;
@@ -73,10 +73,32 @@ public record TeamConfig(
      * troncature à 900 cachait 62-81 % du contenu au LLM, revue 2026-07). Repli si la
      * latence CPU se dégrade : chunk-limit: 6, chunk-excerpt-chars: 1600.
      */
-    public record Retrieval(Integer chunkLimit, Integer chunkExcerptChars) {
+    public record Retrieval(Integer chunkLimit, Integer chunkExcerptChars, Reranker reranker) {
         public Retrieval {
             chunkLimit = chunkLimit == null ? 8 : chunkLimit;
             chunkExcerptChars = chunkExcerptChars == null ? 1800 : chunkExcerptChars;
+            reranker = reranker == null ? new Reranker(null, null, null, null, null, null, null) : reranker;
+        }
+    }
+
+    /**
+     * Reranker cross-encoder ONNX in-process (bge-reranker-v2-m3 int8). DÉSACTIVÉ par
+     * défaut : coût CPU (~3-8 s pour 40 paires sur la cible) + modèle de 571 Mo à
+     * télécharger (bootstrap.sh, volume reranker-models). {@code candidates} = taille du
+     * vivier reclassé.
+     */
+    public record Reranker(Boolean enabled, String modelPath, String modelFile,
+                           Integer maxLength, Integer candidates, Integer batchSize,
+                           Integer intraOpThreads) {
+        public Reranker {
+            enabled = enabled != null && enabled;
+            modelPath = modelPath == null ? "/models/reranker" : modelPath;
+            modelFile = modelFile == null ? "model_quantized" : modelFile;
+            maxLength = maxLength == null ? 512 : maxLength;
+            candidates = candidates == null ? 40 : candidates;
+            batchSize = batchSize == null ? 16 : batchSize;
+            intraOpThreads = intraOpThreads == null
+                    ? Runtime.getRuntime().availableProcessors() : intraOpThreads;
         }
     }
 
