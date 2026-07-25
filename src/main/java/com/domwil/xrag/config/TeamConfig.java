@@ -1,6 +1,8 @@
 package com.domwil.xrag.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -25,7 +27,7 @@ public record TeamConfig(
         Retrieval retrieval,
         Eval eval,
         Schedule schedule,
-        Extractors extractors
+        @Valid Extractors extractors
 ) {
 
     public TeamConfig {
@@ -50,8 +52,8 @@ public record TeamConfig(
             @NotBlank String model,
             String fallbackModel,
             String embeddingModel,
-            Integer numCtx,
-            Double temperature
+            @Min(1) Integer numCtx,
+            @DecimalMin("0.0") Double temperature
     ) {
         public Llm {
             embeddingModel = embeddingModel == null ? "bge-m3" : embeddingModel;
@@ -145,7 +147,7 @@ public record TeamConfig(
      *                           temps du batch — le backlog restant suit les nuits suivantes)
      */
     public record Extractors(boolean java, boolean typescript, boolean python, boolean llm,
-                             Integer llmMaxDocsPerNight) {
+                             @Min(1) Integer llmMaxDocsPerNight) {
         public Extractors {
             llmMaxDocsPerNight = llmMaxDocsPerNight == null ? 150 : llmMaxDocsPerNight;
         }
