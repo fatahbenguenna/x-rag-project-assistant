@@ -24,6 +24,16 @@ public interface MaintenanceRepository {
      */
     int dehubTopicEdges();
 
+    /**
+     * Hygiène des topics (revue 2026-07, M2), idempotente, exécutée au batch nocturne :
+     * PURGE complète des topics au slug non alphanumérique-latin (bruit CJK/symboles —
+     * nœud, arêtes, alias, et retrait des node_ids des chunks) ; NEUTRALISATION des
+     * topics génériques (rattachés à {@code >= 40} documents) — alias et arêtes
+     * supprimés, le nœud restant en marqueur passif dans les node_ids pour empêcher
+     * leur re-création par l'enrichissement. Retourne le nombre de topics traités.
+     */
+    int purgeNoisyTopics();
+
     /** VACUUM ANALYZE des tables chaudes (l'index HNSW n'est jamais reconstruit). */
     void vacuumAnalyze();
 

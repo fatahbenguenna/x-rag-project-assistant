@@ -33,14 +33,12 @@ public class GraphEnrichmentService {
     private final ChunkRepository chunks;
     private final GraphRepository graph;
     private final TopicExtractor topicExtractor;
-    private final AliasResolver aliases;
 
     public GraphEnrichmentService(ChunkRepository chunks, GraphRepository graph,
-                                  TopicExtractor topicExtractor, AliasResolver aliases) {
+                                  TopicExtractor topicExtractor) {
         this.chunks = chunks;
         this.graph = graph;
         this.topicExtractor = topicExtractor;
-        this.aliases = aliases;
     }
 
     /** Bilan d'une passe d'enrichissement, tracé et notifié par le batch nocturne. */

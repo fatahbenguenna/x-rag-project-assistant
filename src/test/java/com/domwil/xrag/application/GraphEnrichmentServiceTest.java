@@ -26,9 +26,8 @@ class GraphEnrichmentServiceTest {
     private final ChunkRepository chunks = mock(ChunkRepository.class);
     private final GraphRepository graph = mock(GraphRepository.class);
     private final TopicExtractor topics = mock(TopicExtractor.class);
-    private final AliasResolver aliases = new AliasResolver(Map.of("fps-suite", List.of("FPSSUITE")));
     private final GraphEnrichmentService service =
-            new GraphEnrichmentService(chunks, graph, topics, aliases);
+            new GraphEnrichmentService(chunks, graph, topics);
 
     private static UnattachedDocument doc(String path) {
         return new UnattachedDocument("gitlab-code", "fps-suite", path, "titre", "contenu kafka kds",

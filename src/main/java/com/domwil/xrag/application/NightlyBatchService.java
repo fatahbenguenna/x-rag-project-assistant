@@ -110,9 +110,11 @@ public class NightlyBatchService {
         }
         var report = graphEnrichment.enrichSources(java.util.List.of(), MAX_ENRICHMENT_DOCS);
         int rewired = maintenance.dehubTopicEdges();
+        int noisy = maintenance.purgeNoisyTopics();
         int purgedTopics = maintenance.purgeUnreferencedTopics();
         log.info("Enrichissement LLM du graphe (décision 10) : {} — {} arête(s) topic->document "
-                + "recâblée(s), {} topic(s) non référencé(s) purgé(s)", report, rewired, purgedTopics);
+                + "recâblée(s), {} topic(s) bruyant(s) traité(s), {} non référencé(s) purgé(s)",
+                report, rewired, noisy, purgedTopics);
     }
 
     /** Postgres + Ollama (embedding minimal) doivent répondre avant de toucher à l'index. */

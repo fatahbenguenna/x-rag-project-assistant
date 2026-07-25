@@ -68,13 +68,32 @@ public class LlmTopicExtractor implements TopicExtractor {
                 .toList();
     }
 
-    /** Un sujet valable : non vide, court, sans « : » (ligne de citation/label) ni excès de mots. */
+    /**
+     * Sujets écartés car non discriminants dans un corpus logiciel : ils touchent des
+     * dizaines de documents, réamorcent un hub via leurs alias et polluent la détection
+     * d'entités (revue 2026-07, M2). La purge dynamique df élevée complète cette liste.
+     */
+    private static final java.util.Set<String> GENERIC_TOPICS = java.util.Set.of(
+            "backend", "frontend", "fullstack", "api", "apis", "rest", "code", "test", "tests",
+            "e2e", "testse2e", "setup", "config", "configuration", "projet", "project",
+            "application", "app", "service", "services", "documentation", "docs", "doc",
+            "web", "ui", "interface", "logiciel", "software", "développement", "developpement");
+
+    /** Lettres latines (accents FR compris), chiffres, espace et séparateurs usuels — le
+     *  LLM produit parfois des sujets en CJK ou en symboles qui figent du bruit en base. */
+    private static final java.util.regex.Pattern LATIN_TOPIC =
+            java.util.regex.Pattern.compile("[\\p{IsLatin}0-9][\\p{IsLatin}0-9 '&_.-]*");
+
+    /** Un sujet valable : court, latin, discriminant (ni générique, ni alias trop court). */
     private static boolean isTopic(String topic) {
         return !topic.isBlank()
                 && !"aucun".equals(topic)
                 && topic.length() <= 40
                 && !topic.contains(":")
-                && topic.split("\\s+").length <= MAX_TOPIC_WORDS;
+                && topic.split("\\s+").length <= MAX_TOPIC_WORDS
+                && LATIN_TOPIC.matcher(topic).matches()
+                && !GENERIC_TOPICS.contains(topic)
+                && topic.replaceAll("[^\\p{L}\\p{N}]", "").length() >= 4;
     }
 
     /** Retire puces, numéros et ponctuation de bord ; passe en minuscules. */
