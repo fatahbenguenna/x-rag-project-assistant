@@ -72,7 +72,8 @@ class JdbcChunkRepositoryIntegrationTest extends PostgresIntegrationSupport {
 
         assertThat(needing).hasSize(1);
         assertThat(needing.getFirst().path()).isEqualTo("pd1");
-        // les non-topic sont exposés (le project: y figure : c'est le service/dehub qui l'exclut des arêtes)
-        assertThat(needing.getFirst().existingNodeIds()).contains("page:9");
+        // les non-topic sont exposés, project: EXCLU dès la requête (il recréerait le hub)
+        assertThat(needing.getFirst().existingNodeIds())
+                .contains("page:9").doesNotContain("project:fps");
     }
 }

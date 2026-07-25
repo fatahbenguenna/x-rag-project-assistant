@@ -47,13 +47,31 @@ class GraphMaintenanceIntegrationTest extends PostgresIntegrationSupport {
         edge("seed", "voisin");
         edge("voisin", "voisin-du-voisin");
 
-        var first = graphSearch.neighborhood(Set.of("seed"), 2);
-        var second = graphSearch.neighborhood(Set.of("seed"), 2);
+        var subgraph = graphSearch.neighborhood(Set.of("seed"), 2);
 
-        assertThat(first.nodeIds()).contains("hub", "voisin", "voisin-du-voisin");
+        assertThat(subgraph.nodeIds()).contains("hub", "voisin", "voisin-du-voisin");
         // le hub est ATTEINT mais pas TRAVERSÉ : ce qui est derrière lui reste invisible
-        assertThat(first.nodeIds()).doesNotContain("derriere-hub");
-        // déterminisme (l'ancien LIMIT sans ORDER BY échantillonnait arbitrairement)
+        assertThat(subgraph.nodeIds()).doesNotContain("derriere-hub");
+    }
+
+    @Test
+    void laTroncatureDuVoisinageEstDeterministe() {
+        // 130 voisins directs > MAX_NODES=120 : le LIMIT tronque RÉELLEMENT — sans le
+        // ORDER BY (depth, id), l'échantillon serait arbitraire (la première version de ce
+        // test ne dépassait jamais la limite : vacueuse, revue adversariale).
+        node("seed2", "PAGE");
+        for (int i = 1; i <= 130; i++) {
+            String id = String.format("v-%03d", i);
+            node(id, "CLASS");
+            edge("seed2", id);
+        }
+
+        var first = graphSearch.neighborhood(Set.of("seed2"), 1);
+        var second = graphSearch.neighborhood(Set.of("seed2"), 1);
+
+        assertThat(first.nodeIds()).hasSize(120);
+        // ordre (profondeur, id) : la graine puis v-001..v-119 ; la fin de l'alphabet est tronquée
+        assertThat(first.nodeIds()).contains("seed2", "v-001", "v-119").doesNotContain("v-120", "v-130");
         assertThat(first.nodeIds()).isEqualTo(second.nodeIds());
     }
 

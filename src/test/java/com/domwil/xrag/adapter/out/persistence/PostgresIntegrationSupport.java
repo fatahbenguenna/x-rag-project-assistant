@@ -37,6 +37,14 @@ public abstract class PostgresIntegrationSupport {
 
     @BeforeAll
     static void startPostgres() throws Exception {
+        if (!DOCKER_AVAILABLE) {
+            // Surefire affiche « Tests run: 0 » SANS compter de skip quand l'assumption
+            // échoue en @BeforeAll : sans ce message, les 9 tests disparaîtraient en
+            // silence (démon absent, ou API refusée — voir api.version dans le pom).
+            System.err.println("[ATTENTION] Docker indisponible ou API refusée : les tests "
+                    + "d'intégration JDBC sont IGNORÉS. Si Docker tourne, vérifier "
+                    + "-Dapi.version (pom.xml, défaut 1.44 — Docker < 25 : -Dapi.version=1.43).");
+        }
         assumeTrue(DOCKER_AVAILABLE, "Docker indisponible : tests d'intégration JDBC ignorés");
         if (jdbc != null) {
             return; // conteneur singleton déjà démarré par une classe précédente
