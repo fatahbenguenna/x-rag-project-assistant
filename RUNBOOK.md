@@ -179,15 +179,15 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | **Dashboard d'indexation** | 🪟 navigateur | `http://localhost:8080/dashboard.html` — monitoring temps quasi-réel (chunks/source, tâche en cours, temps écoulé, problèmes) |
 | État de l'index | 🐧 | `curl -s localhost:8080/api/admin/status` (brut) ou `.../api/admin/indexing-status` (détaillé) |
 | Qualité du graphe | 🐧 | `curl -s localhost:8080/api/admin/graph-quality` (verdict + trous éventuels) |
-| Enrichissement LLM du graphe | 🐧 | `curl -X POST 'localhost:8080/api/admin/enrich?max=150'` (async, bilan dans les logs) — rattache les docs sans nœud ; ajouter `&sources=confluence,jira` pour topic-enrichir des sources déjà rattachées. Auto dans le batch nocturne si `extractors.llm: true` |
-| Ré-indexer une source | 🐧 | `curl -X POST 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
-| Batch à la demande | 🐧 | `curl -X POST localhost:8080/api/admin/nightly` |
+| Enrichissement LLM du graphe | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/enrich?max=150'` (async, bilan dans les logs) — rattache les docs sans nœud ; ajouter `&sources=confluence,jira` pour topic-enrichir des sources déjà rattachées. Auto dans le batch nocturne si `extractors.llm: true` |
+| Ré-indexer une source | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
+| Batch à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` |
 | Latences vs cibles | 🐧 | `./scripts/measure-latency.sh` |
 
 ## 8. Exploitation courante
 
 - **Batch nocturne à 02:00** : automatique **si le poste et WSL tournent à cette heure**.
-  Poste éteint la nuit → lancer le rattrapage le matin : `curl -X POST localhost:8080/api/admin/nightly`.
+  Poste éteint la nuit → lancer le rattrapage le matin : `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly`.
 - **Notifications** : renseigner `NOTIFY_WEBHOOK_URL` dans `.env` (webhook Slack/Mattermost/
   Rocket.Chat) — sinon les alertes ne sont que dans les logs.
 - **Rafraîchir les cookies** (mode cookie, au premier 401 / alerte health check) :
