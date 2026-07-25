@@ -119,8 +119,8 @@ public class LlmConfiguration {
 
     @Bean
     public GraphEnrichmentService graphEnrichmentService(ChunkRepository chunks, GraphRepository graph,
-                                                         TopicExtractor topicExtractor, AliasResolver aliases) {
-        return new GraphEnrichmentService(chunks, graph, topicExtractor, aliases);
+                                                         TopicExtractor topicExtractor) {
+        return new GraphEnrichmentService(chunks, graph, topicExtractor);
     }
 
     @Bean

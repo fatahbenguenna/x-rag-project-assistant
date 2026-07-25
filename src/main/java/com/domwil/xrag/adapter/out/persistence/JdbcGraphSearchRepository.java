@@ -20,6 +20,13 @@ public class JdbcGraphSearchRepository implements GraphSearchRepository {
     /** Garde-fou : un hub très connecté ne doit pas exploser le prompt. */
     private static final int MAX_NODES = 120;
 
+    /**
+     * Un nœud de degré supérieur n'est pas TRAVERSÉ (sauf comme graine, sujet demandé) :
+     * sans cette barrière, tout chemin passait par le hub PROJECT et le voisinage
+     * devenait le graphe entier (revue 2026-07, H2).
+     */
+    private static final int MAX_TRAVERSAL_DEGREE = 50;
+
     private final JdbcTemplate jdbc;
 
     public JdbcGraphSearchRepository(JdbcTemplate jdbc) {
@@ -42,18 +49,34 @@ public class JdbcGraphSearchRepository implements GraphSearchRepository {
             return Subgraph.empty();
         }
         String seeds = PgArrays.textArray(seedNodeIds);
+        // LIMIT déterministe (les plus proches d'abord, puis id) — l'ancien LIMIT sans
+        // ORDER BY échantillonnait arbitrairement ; barrière anti-hub sur la traversée.
         List<String> nodeIds = jdbc.queryForList("""
-                        WITH RECURSIVE walk(id, depth) AS (
+                        WITH RECURSIVE hubs AS (
+                            SELECT id FROM (
+                                SELECT src AS id FROM graph_edges
+                                UNION ALL
+                                SELECT dst FROM graph_edges
+                            ) endpoints
+                            GROUP BY id
+                            HAVING count(*) > ?
+                        ),
+                        walk(id, depth) AS (
                             SELECT unnest(?::text[]), 0
                             UNION
                             SELECT CASE WHEN e.src = w.id THEN e.dst ELSE e.src END, w.depth + 1
                             FROM graph_edges e
                             JOIN walk w ON e.src = w.id OR e.dst = w.id
                             WHERE w.depth < ?
+                              AND (w.depth = 0 OR w.id NOT IN (SELECT id FROM hubs))
                         )
-                        SELECT DISTINCT id FROM walk LIMIT ?
+                        SELECT id FROM (
+                            SELECT id, min(depth) AS d FROM walk GROUP BY id
+                        ) grouped
+                        ORDER BY d, id
+                        LIMIT ?
                         """,
-                String.class, seeds, depth, MAX_NODES);
+                String.class, MAX_TRAVERSAL_DEGREE, seeds, depth, MAX_NODES);
         if (nodeIds.isEmpty()) {
             return Subgraph.empty();
         }

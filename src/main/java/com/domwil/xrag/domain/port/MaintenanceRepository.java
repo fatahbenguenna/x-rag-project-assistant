@@ -16,6 +16,24 @@ public interface MaintenanceRepository {
      */
     int purgeUnreferencedTopics();
 
+    /**
+     * Recâble les arêtes des topics : supprime les arêtes TOPIC→PROJECT (l'étoile autour
+     * du hub rendait le voisinage non discriminant, revue 2026-07 H2) et crée les arêtes
+     * TOPIC→document (page/issue/class) dérivées des node_ids des chunks. Idempotent —
+     * répare aussi le stock des instances existantes à chaque batch nocturne.
+     */
+    int dehubTopicEdges();
+
+    /**
+     * Hygiène des topics (revue 2026-07, M2), idempotente, exécutée au batch nocturne :
+     * PURGE complète des topics au slug non alphanumérique-latin (bruit CJK/symboles —
+     * nœud, arêtes, alias, et retrait des node_ids des chunks) ; NEUTRALISATION des
+     * topics génériques (rattachés à {@code >= 40} documents) — alias et arêtes
+     * supprimés, le nœud restant en marqueur passif dans les node_ids pour empêcher
+     * leur re-création par l'enrichissement. Retourne le nombre de topics traités.
+     */
+    int purgeNoisyTopics();
+
     /** VACUUM ANALYZE des tables chaudes (l'index HNSW n'est jamais reconstruit). */
     void vacuumAnalyze();
 

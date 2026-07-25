@@ -36,6 +36,19 @@ class LlmTopicExtractorTest {
     }
 
     @Test
+    void ecarteLesSujetsGeneriquesNonLatinsEtTropCourts() {
+        // génériques (blocklist M2), bruit non-latin, alias trop courts (< 4 alphanum)
+        String response = """
+                backend
+                frontend
+                api配置
+                ws
+                kds-websocket""";
+
+        assertThat(LlmTopicExtractor.parse(response)).containsExactly("kds-websocket");
+    }
+
+    @Test
     void deduplicationEtPlafondACinq() {
         String response = """
                 cache

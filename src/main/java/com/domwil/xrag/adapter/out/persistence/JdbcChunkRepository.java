@@ -25,7 +25,8 @@ public class JdbcChunkRepository implements ChunkRepository {
 
     private static final RowMapper<UnattachedDocument> UNATTACHED_MAPPER = (rs, i) -> new UnattachedDocument(
             rs.getString("source"), rs.getString("project"),
-            rs.getString("path"), rs.getString("title"), rs.getString("text"));
+            rs.getString("path"), rs.getString("title"), rs.getString("text"),
+            java.util.Arrays.asList((String[]) rs.getArray("existing_node_ids").getArray()));
 
     private final JdbcTemplate jdbc;
 
@@ -84,7 +85,8 @@ public class JdbcChunkRepository implements ChunkRepository {
         // Les plus gros d'abord : rattacher un doc à N chunks fait gagner N au ratio.
         return jdbc.query("""
                         SELECT source, min(project) AS project, path, min(title) AS title,
-                               left(string_agg(content, E'\\n' ORDER BY chunk_index), 3000) AS text
+                               left(string_agg(content, E'\\n' ORDER BY chunk_index), 3000) AS text,
+                               '{}'::text[] AS existing_node_ids
                         FROM rag_chunks
                         WHERE cardinality(node_ids) = 0
                         GROUP BY source, path
@@ -100,7 +102,10 @@ public class JdbcChunkRepository implements ChunkRepository {
         // Concaténation (pas de String.formatted) : le SQL contient « LIKE 'topic:%' » et le
         // « %' » serait pris pour un spécificateur de format.
         String sql = "SELECT source, min(project) AS project, path, min(title) AS title, "
-                + "left(string_agg(content, E'\\n' ORDER BY chunk_index), 3000) AS text "
+                + "left(string_agg(content, E'\\n' ORDER BY chunk_index), 3000) AS text, "
+                + "(SELECT coalesce(array_agg(DISTINCT nid), '{}'::text[]) FROM rag_chunks c2, "
+                + " unnest(c2.node_ids) nid WHERE c2.source = rag_chunks.source "
+                + " AND c2.path = rag_chunks.path AND nid NOT LIKE 'topic:%' AND nid NOT LIKE 'project:%') AS existing_node_ids "
                 + "FROM rag_chunks "
                 + "WHERE NOT EXISTS (SELECT 1 FROM unnest(node_ids) nid WHERE nid LIKE 'topic:%') "
                 + (allSources ? "" : "AND source = ANY(?::text[]) ")

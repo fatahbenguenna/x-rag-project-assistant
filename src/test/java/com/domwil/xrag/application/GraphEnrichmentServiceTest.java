@@ -26,12 +26,12 @@ class GraphEnrichmentServiceTest {
     private final ChunkRepository chunks = mock(ChunkRepository.class);
     private final GraphRepository graph = mock(GraphRepository.class);
     private final TopicExtractor topics = mock(TopicExtractor.class);
-    private final AliasResolver aliases = new AliasResolver(Map.of("fps-suite", List.of("FPSSUITE")));
     private final GraphEnrichmentService service =
-            new GraphEnrichmentService(chunks, graph, topics, aliases);
+            new GraphEnrichmentService(chunks, graph, topics);
 
     private static UnattachedDocument doc(String path) {
-        return new UnattachedDocument("gitlab-code", "fps-suite", path, "titre", "contenu kafka kds");
+        return new UnattachedDocument("gitlab-code", "fps-suite", path, "titre", "contenu kafka kds",
+                List.of("class:fps-suite/" + path));
     }
 
     @Test
@@ -51,11 +51,13 @@ class GraphEnrichmentServiceTest {
         assertThat(upserted.getValue().nodes())
                 .anyMatch(n -> n.id().equals("topic:kafka") && "TOPIC".equals(n.type()) && "Kafka".equals(n.name()))
                 .anyMatch(n -> n.id().equals("topic:kds"));
-        // arête topic -> projet, avec le nœud projet nommé « FPSSUITE » (pas le slug)
+        // arêtes topic -> nœuds du DOCUMENT (plus jamais vers le PROJECT hub — revue H2),
+        // et les nœuds cibles existants ne sont PAS ré-upsertés (leur nom serait écrasé)
         assertThat(upserted.getValue().edges())
-                .anyMatch(e -> e.src().equals("topic:kafka") && e.dst().equals("project:fps-suite"));
+                .anyMatch(e -> e.src().equals("topic:kafka") && e.dst().equals("class:fps-suite/apps/deploy.yml"))
+                .noneMatch(e -> e.dst().startsWith("project:"));
         assertThat(upserted.getValue().nodes())
-                .anyMatch(n -> n.id().equals("project:fps-suite") && "FPSSUITE".equals(n.name()));
+                .allMatch(n -> "TOPIC".equals(n.type()));
 
         verify(graph).upsertAliases(argThat(m -> "topic:kafka".equals(m.get("kafka"))
                 && "topic:kds".equals(m.get("kds"))));
@@ -78,7 +80,8 @@ class GraphEnrichmentServiceTest {
     @Test
     void enrichSourcesTopicEnrichitLesDocumentsCiblesMemeDejaRattaches() {
         when(chunks.documentsNeedingTopics(any(), anyInt())).thenReturn(List.of(
-                new UnattachedDocument("confluence", "fps-suite", "page:1", "Multi-tenant", "souscription client")));
+                new UnattachedDocument("confluence", "fps-suite", "page:1", "Multi-tenant",
+                        "souscription client", List.of("page:1"))));
         when(topics.extractTopics(any(), any())).thenReturn(List.of("multi-tenant"));
         when(chunks.attachToNodes(eq("confluence"), eq("page:1"), any())).thenReturn(2);
 
