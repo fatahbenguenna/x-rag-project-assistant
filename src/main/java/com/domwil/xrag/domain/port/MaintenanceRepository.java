@@ -16,6 +16,14 @@ public interface MaintenanceRepository {
      */
     int purgeUnreferencedTopics();
 
+    /**
+     * Recâble les arêtes des topics : supprime les arêtes TOPIC→PROJECT (l'étoile autour
+     * du hub rendait le voisinage non discriminant, revue 2026-07 H2) et crée les arêtes
+     * TOPIC→document (page/issue/class) dérivées des node_ids des chunks. Idempotent —
+     * répare aussi le stock des instances existantes à chaque batch nocturne.
+     */
+    int dehubTopicEdges();
+
     /** VACUUM ANALYZE des tables chaudes (l'index HNSW n'est jamais reconstruit). */
     void vacuumAnalyze();
 

@@ -51,6 +51,28 @@ public class JdbcMaintenanceRepository implements MaintenanceRepository {
     }
 
     @Override
+    public int dehubTopicEdges() {
+        // (a) l'étoile TOPIC -> PROJECT disparaît…
+        jdbc.update("""
+                DELETE FROM graph_edges e USING graph_nodes n
+                WHERE e.src = n.id AND n.type = 'TOPIC' AND e.dst LIKE 'project:%'
+                """);
+        // (b) …remplacée par TOPIC -> document (page/issue/class), dérivée des node_ids des
+        // chunks (le doc et ses topics cohabitent dans node_ids). EXISTS : jamais d'arête
+        // vers un nœud fantôme (FK).
+        return jdbc.update("""
+                INSERT INTO graph_edges (src, dst, type)
+                SELECT DISTINCT t.nid, d.nid, 'REFERENCES'
+                FROM rag_chunks c
+                CROSS JOIN LATERAL unnest(c.node_ids) t(nid)
+                CROSS JOIN LATERAL unnest(c.node_ids) d(nid)
+                WHERE t.nid LIKE 'topic:%' AND d.nid NOT LIKE 'topic:%' AND d.nid NOT LIKE 'project:%'
+                  AND EXISTS (SELECT 1 FROM graph_nodes gn WHERE gn.id = d.nid)
+                ON CONFLICT DO NOTHING
+                """);
+    }
+
+    @Override
     public void vacuumAnalyze() {
         // Hors transaction (autocommit JdbcTemplate). Index HNSW conservé, jamais reconstruit.
         jdbc.execute("VACUUM ANALYZE rag_chunks");

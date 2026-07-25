@@ -118,7 +118,7 @@ public class RagChatService {
 
         var spec = chatClient.prompt()
                 .user(user -> user.text(USER_TEMPLATE)
-                        .param("graph", subgraph.isEmpty() ? "(aucune relation trouvée)"
+                        .param("graph", subgraph.edges().isEmpty() ? "(aucune relation trouvée)"
                                 : GraphTextSerializer.serialize(subgraph))
                         .param("documents", retrieved.isEmpty() ? "(aucun document trouvé)"
                                 : formatChunks(retrieved))
