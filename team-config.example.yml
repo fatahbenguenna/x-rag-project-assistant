@@ -52,6 +52,15 @@ retrieval:
   chunk-limit: 8
   chunk-excerpt-chars: 1800
 
+# Éval du retrieval (recall@k, sans LLM — rapide et objectif) : pour chaque question
+# canonique, « expected » est une sous-chaîne (insensible à la casse) du path ou du titre
+# de la source attendue. Rapport via GET /api/admin/eval et dans la notification nocturne.
+# Prérequis pour calibrer les poids de la recherche hybride et mesurer un reranker.
+eval:
+  cases:
+    - { question: "Comment déployer l'application ?", expected: "guide-deploiement" }
+    - { question: "Y a-t-il un ticket sur le bug de persistance ?", expected: "PASS-42" }
+
 schedule:
   nightly: "0 0 2 * * *"        # cron Spring (6 champs) — batch nocturne 02:00
 

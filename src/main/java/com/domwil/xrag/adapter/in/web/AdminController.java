@@ -5,6 +5,7 @@ import com.domwil.xrag.application.GraphQualityService;
 import com.domwil.xrag.application.IndexingStatusService;
 import com.domwil.xrag.application.IndexingStatusService.IndexingStatus;
 import com.domwil.xrag.application.NightlyBatchService;
+import com.domwil.xrag.application.RagEvalService;
 import com.domwil.xrag.application.SmokeTestService;
 import com.domwil.xrag.application.SyncService;
 import com.domwil.xrag.domain.port.MaintenanceRepository;
@@ -31,12 +32,13 @@ public class AdminController {
     private final GraphQualityService graphQuality;
     private final GraphEnrichmentService graphEnrichment;
     private final IndexingStatusService indexingStatus;
+    private final RagEvalService ragEval;
     private final TaskExecutor taskExecutor;
 
     public AdminController(SyncService syncService, SmokeTestService smokeTests,
                            MaintenanceRepository maintenance, NightlyBatchService nightlyBatch,
                            GraphQualityService graphQuality, GraphEnrichmentService graphEnrichment,
-                           IndexingStatusService indexingStatus,
+                           IndexingStatusService indexingStatus, RagEvalService ragEval,
                            @Qualifier("applicationTaskExecutor") TaskExecutor taskExecutor) {
         this.syncService = syncService;
         this.smokeTests = smokeTests;
@@ -45,6 +47,7 @@ public class AdminController {
         this.graphQuality = graphQuality;
         this.graphEnrichment = graphEnrichment;
         this.indexingStatus = indexingStatus;
+        this.ragEval = ragEval;
         this.taskExecutor = taskExecutor;
     }
 
@@ -109,6 +112,16 @@ public class AdminController {
         }
         taskExecutor.execute(() -> graphEnrichment.enrich(capped));
         return ResponseEntity.accepted().body(Map.of("started", true, "max", capped, "sources", "unattached"));
+    }
+
+    /**
+     * Recall@k du retrieval sur les cas canoniques (team-config eval.cases) — sans LLM,
+     * ~1 s/cas (embedding). Retrieval bloquant : offloadé hors de l'event-loop réactif.
+     */
+    @GetMapping("/eval")
+    public reactor.core.publisher.Mono<RagEvalService.Report> eval() {
+        return reactor.core.publisher.Mono.fromCallable(ragEval::evaluate)
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     /** Couverture du graphe + trous détectés (décision 10 : extraction LLM seulement si trous). */

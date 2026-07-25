@@ -30,6 +30,7 @@ public class NightlyBatchService {
     private final MaintenanceRepository maintenance;
     private final ProjectSheetService projectSheets;
     private final SmokeTestService smokeTests;
+    private final RagEvalService ragEval;
     private final GraphQualityService graphQuality;
     private final GraphEnrichmentService graphEnrichment;
     private final boolean llmEnrichmentEnabled;
@@ -38,6 +39,7 @@ public class NightlyBatchService {
     public NightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                SyncService syncService, MaintenanceRepository maintenance,
                                ProjectSheetService projectSheets, SmokeTestService smokeTests,
+                               RagEvalService ragEval,
                                GraphQualityService graphQuality, GraphEnrichmentService graphEnrichment,
                                boolean llmEnrichmentEnabled, Notifier notifier) {
         this.jdbc = jdbc;
@@ -46,6 +48,7 @@ public class NightlyBatchService {
         this.maintenance = maintenance;
         this.projectSheets = projectSheets;
         this.smokeTests = smokeTests;
+        this.ragEval = ragEval;
         this.graphQuality = graphQuality;
         this.graphEnrichment = graphEnrichment;
         this.llmEnrichmentEnabled = llmEnrichmentEnabled;
@@ -77,12 +80,14 @@ public class NightlyBatchService {
             projectSheets.refreshAll();
             String graphVerdict = graphQuality.evaluate().verdict();
             String smokeReport = smokeTests.run();
+            String evalReport = ragEval.hasCases() ? ragEval.evaluate().summary() : null;
 
             long minutes = Duration.between(start, Instant.now()).toMinutes();
             String stats = String.valueOf(maintenance.stats());
             log.info("Batch nocturne terminé en {} min — stats : {}", minutes, stats);
             notifier.info("Batch nocturne terminé en " + minutes + " min",
                     "Stats : " + stats + "\nÉval graphe : " + graphVerdict
+                            + (evalReport == null ? "" : "\n" + evalReport)
                             + "\nSmoke test :\n" + smokeReport);
         } catch (Exception e) {
             log.error("ALERTE batch nocturne : échec en cours de batch (upsert only, "
