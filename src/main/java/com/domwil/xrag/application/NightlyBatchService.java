@@ -21,8 +21,6 @@ public class NightlyBatchService {
 
     private static final Logger log = LoggerFactory.getLogger(NightlyBatchService.class);
 
-    /** Plafond de documents enrichis par nuit (budget de temps du batch) ; le reste suit les nuits suivantes. */
-    private static final int MAX_ENRICHMENT_DOCS = 150;
 
     private final JdbcTemplate jdbc;
     private final EmbeddingModel embeddingModel;
@@ -34,6 +32,7 @@ public class NightlyBatchService {
     private final GraphQualityService graphQuality;
     private final GraphEnrichmentService graphEnrichment;
     private final boolean llmEnrichmentEnabled;
+    private final int llmMaxDocsPerNight;
     private final Notifier notifier;
 
     public NightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
@@ -41,7 +40,7 @@ public class NightlyBatchService {
                                ProjectSheetService projectSheets, SmokeTestService smokeTests,
                                RagEvalService ragEval,
                                GraphQualityService graphQuality, GraphEnrichmentService graphEnrichment,
-                               boolean llmEnrichmentEnabled, Notifier notifier) {
+                               boolean llmEnrichmentEnabled, int llmMaxDocsPerNight, Notifier notifier) {
         this.jdbc = jdbc;
         this.embeddingModel = embeddingModel;
         this.syncService = syncService;
@@ -52,6 +51,7 @@ public class NightlyBatchService {
         this.graphQuality = graphQuality;
         this.graphEnrichment = graphEnrichment;
         this.llmEnrichmentEnabled = llmEnrichmentEnabled;
+        this.llmMaxDocsPerNight = llmMaxDocsPerNight;
         this.notifier = notifier;
     }
 
@@ -108,7 +108,7 @@ public class NightlyBatchService {
         if (!llmEnrichmentEnabled) {
             return;
         }
-        var report = graphEnrichment.enrichSources(java.util.List.of(), MAX_ENRICHMENT_DOCS);
+        var report = graphEnrichment.enrichSources(java.util.List.of(), llmMaxDocsPerNight);
         int rewired = maintenance.dehubTopicEdges();
         int noisy = maintenance.purgeNoisyTopics();
         int purgedTopics = maintenance.purgeUnreferencedTopics();

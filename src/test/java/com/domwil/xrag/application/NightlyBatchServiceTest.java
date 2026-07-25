@@ -29,7 +29,7 @@ class NightlyBatchServiceTest {
     private final Notifier notifier = mock(Notifier.class);
 
     private final NightlyBatchService batch = new NightlyBatchService(
-            jdbc, embeddings, sync, maintenance, sheets, smoke, ragEval, graphQuality, enrichment, false, notifier);
+            jdbc, embeddings, sync, maintenance, sheets, smoke, ragEval, graphQuality, enrichment, false, 150, notifier);
 
     @Test
     void healthCheckEnEchecAlerteEtAbandonne() {

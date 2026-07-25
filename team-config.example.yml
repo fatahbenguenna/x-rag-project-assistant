@@ -9,6 +9,13 @@ llm:
   model: qwen2.5:7b-instruct
   fallback-model: qwen2.5:3b    # optionnel : questions descriptives simples
   embedding-model: bge-m3       # toujours local (multilingue FR + code)
+  # num-ctx : fenêtre de contexte Ollama (défaut 8192 — le défaut SERVEUR 2048-4096
+  # tronquerait silencieusement le prompt RAG). Mémoire KV cache proportionnelle :
+  # sur machine contrainte, voir OLLAMA_KV_CACHE_TYPE dans .env.example.
+  # num-ctx: 8192
+  # temperature : bas = factuel (défaut 0.1) — appliqué à TOUS les providers (Gemini
+  # repartirait sinon à ~1.0 et perdrait le cadrage factuel).
+  # temperature: 0.1
 
 sources:
   confluence:
@@ -81,3 +88,4 @@ extractors:
   # le rapport du batch). Le LLM crée des nœuds TOPIC pour les documents non couverts par
   # les extracteurs déterministes, refermant le pont RAG↔graphe. Coûteux : plafonné/nuit.
   llm: false
+  # llm-max-docs-per-night: 150   # plafond de docs topic-enrichis par nuit (budget batch)
