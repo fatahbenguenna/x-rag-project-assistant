@@ -29,23 +29,31 @@ public class ModelRouter {
             "\\b(mrs?|merge[- ]requests?|combien|compte|compter|liste|lister|plus (vieille|vieux|recente?|ancienne?)|"
                     + "ouvertes?|communiquer|entre|comparer?|difference|versus|vs)\\b");
 
-    private final String fallbackModel;
+    private final ChatOptions fallbackOptions;
 
-    /** @param fallbackModel modèle léger configuré (llm.fallback-model), ou null pour désactiver le routage. */
-    public ModelRouter(String fallbackModel) {
-        this.fallbackModel = fallbackModel;
+    /**
+     * @param fallbackOptions options COMPLÈTES du modèle léger (modèle + num_ctx +
+     *                        température, construites par la configuration), ou null pour
+     *                        désactiver le routage. Complètes obligatoirement :
+     *                        {@code ChatClient.options(...)} remplace les options par
+     *                        défaut du client — un simple nom de modèle ferait perdre
+     *                        num_ctx, et le prompt RAG déborderait la fenêtre par défaut
+     *                        du serveur Ollama (troncature silencieuse des sources).
+     */
+    public ModelRouter(ChatOptions fallbackOptions) {
+        this.fallbackOptions = fallbackOptions;
     }
 
     /**
      * Options de chat à appliquer à la requête, ou {@code null} pour garder le
      * modèle principal par défaut du ChatClient.
      */
-    public ChatOptions.Builder<?> route(String question) {
-        if (fallbackModel == null || fallbackModel.isBlank() || !isDescriptive(question)) {
+    public ChatOptions route(String question) {
+        if (fallbackOptions == null || !isDescriptive(question)) {
             return null;
         }
-        log.debug("Question descriptive : routée vers le modèle fallback {}", fallbackModel);
-        return ChatOptions.builder().model(fallbackModel);
+        log.debug("Question descriptive : routée vers le modèle fallback {}", fallbackOptions.getModel());
+        return fallbackOptions;
     }
 
     boolean isDescriptive(String question) {

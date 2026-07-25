@@ -26,8 +26,6 @@ public class RagChatService {
     private static final Logger log = LoggerFactory.getLogger(RagChatService.class);
 
     private static final int GRAPH_DEPTH = 2;
-    private static final int CHUNK_LIMIT = 4;
-    private static final int CHUNK_EXCERPT_CHARS = 900;
 
     private static final String USER_TEMPLATE = """
             Contexte issu du graphe de connaissances de l'équipe (relations extraites du code, \
@@ -52,11 +50,14 @@ public class RagChatService {
     private final MergeRequestTools mergeRequestTools;
     private final KnowledgeBaseTools knowledgeBaseTools;
     private final ModelRouter modelRouter;
+    private final int chunkLimit;
+    private final int chunkExcerptChars;
 
     public RagChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                           EntityDetector entityDetector, GraphSearchRepository graphSearch,
                           ChunkRepository chunks, MergeRequestTools mergeRequestTools,
-                          KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter) {
+                          KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter,
+                          int chunkLimit, int chunkExcerptChars) {
         this.chatClient = chatClient;
         this.embeddingModel = embeddingModel;
         this.entityDetector = entityDetector;
@@ -65,6 +66,8 @@ public class RagChatService {
         this.mergeRequestTools = mergeRequestTools;
         this.knowledgeBaseTools = knowledgeBaseTools;
         this.modelRouter = modelRouter;
+        this.chunkLimit = chunkLimit;
+        this.chunkExcerptChars = chunkExcerptChars;
     }
 
     public Flux<String> answer(String question, String project) {
@@ -100,7 +103,7 @@ public class RagChatService {
         Subgraph subgraph = graphSearch.neighborhood(seeds, GRAPH_DEPTH);
         float[] embedding = embeddingModel.embed(question);
         List<ScoredChunk> retrieved =
-                chunks.hybridSearch(embedding, question, subgraph.nodeIds(), project, CHUNK_LIMIT);
+                chunks.hybridSearch(embedding, question, subgraph.nodeIds(), project, chunkLimit);
         log.debug("Retrieval : {} entités, {} nœuds de sous-graphe, {} chunks",
                 seeds.size(), subgraph.nodes().size(), retrieved.size());
 
@@ -115,18 +118,18 @@ public class RagChatService {
         // Descriptif → modèle fallback léger, sans tools (les petits modèles sont
         // peu fiables en function calling et le descriptif n'en a pas besoin).
         // Modèle principal → tools MRs + recherche plein-texte de la base de connaissances.
-        spec = routed != null ? spec.options(routed)
+        spec = routed != null ? spec.options(routed.mutate())
                 : spec.tools(mergeRequestTools, knowledgeBaseTools);
         return spec.stream()
                 .chatResponse();
     }
 
-    private static String formatChunks(List<ScoredChunk> retrieved) {
+    private String formatChunks(List<ScoredChunk> retrieved) {
         var sb = new StringBuilder();
         for (int i = 0; i < retrieved.size(); i++) {
             ScoredChunk chunk = retrieved.get(i);
-            String excerpt = chunk.content().length() > CHUNK_EXCERPT_CHARS
-                    ? chunk.content().substring(0, CHUNK_EXCERPT_CHARS) + "…"
+            String excerpt = chunk.content().length() > chunkExcerptChars
+                    ? chunk.content().substring(0, chunkExcerptChars) + "…"
                     : chunk.content();
             sb.append("[").append(i + 1).append("] ").append(chunk.citation());
             if (chunk.url() != null) {

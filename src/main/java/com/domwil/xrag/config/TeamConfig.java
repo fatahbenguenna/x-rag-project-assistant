@@ -22,6 +22,7 @@ public record TeamConfig(
         @NotNull @Valid Sources sources,
         Map<String, List<String>> aliases,
         Map<String, List<String>> synonyms,
+        Retrieval retrieval,
         Schedule schedule,
         Extractors extractors
 ) {
@@ -29,6 +30,7 @@ public record TeamConfig(
     public TeamConfig {
         aliases = aliases == null ? Map.of() : Map.copyOf(aliases);
         synonyms = synonyms == null ? Map.of() : Map.copyOf(synonyms);
+        retrieval = retrieval == null ? new Retrieval(null, null) : retrieval;
         schedule = schedule == null ? new Schedule(null) : schedule;
         extractors = extractors == null ? new Extractors(true, true, false, false) : extractors;
     }
@@ -61,6 +63,19 @@ public record TeamConfig(
     }
 
     public record Jira(@NotBlank String baseUrl, @NotEmpty List<String> projects) {
+    }
+
+    /**
+     * Réglages du retrieval injecté au prompt. Défauts calibrés pour num_ctx=8192 :
+     * 8 chunks montrés en entier (1800 car. = la taille max d'un chunk — l'ancienne
+     * troncature à 900 cachait 62-81 % du contenu au LLM, revue 2026-07). Repli si la
+     * latence CPU se dégrade : chunk-limit: 6, chunk-excerpt-chars: 1600.
+     */
+    public record Retrieval(Integer chunkLimit, Integer chunkExcerptChars) {
+        public Retrieval {
+            chunkLimit = chunkLimit == null ? 8 : chunkLimit;
+            chunkExcerptChars = chunkExcerptChars == null ? 1800 : chunkExcerptChars;
+        }
     }
 
     public record Schedule(String nightly) {
