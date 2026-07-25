@@ -60,6 +60,31 @@ class RagEvalServiceTest {
     }
 
     @Test
+    void signaleLesRetrogradationsDuReranker() {
+        // Un reranker actif qui ÉJECTE la source attendue du top-K livré : le harness doit
+        // le voir (avant correctif, la ligne était identique à un run sain — revue adversariale).
+        var rerankerActif = mock(com.domwil.xrag.domain.port.ChunkReranker.class);
+        when(rerankerActif.candidatePoolSize(org.mockito.ArgumentMatchers.anyInt())).thenReturn(40);
+        when(rerankerActif.rerank(anyString(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of(chunk("autre", "Autre"))); // la source attendue est éjectée
+        when(entityDetector.detectNodeIds(anyString())).thenReturn(java.util.Set.of());
+        when(graphSearch.neighborhood(any(), anyInt())).thenReturn(Subgraph.empty());
+        when(embeddings.embed(anyString())).thenReturn(new float[]{1f});
+        when(chunks.hybridSearch(any(), anyString(), any(), any(), anyInt(), org.mockito.ArgumentMatchers.anyDouble()))
+                .thenReturn(List.of(chunk("specs/spec-040/plan.md", "Plan"))); // rang 1 du vivier
+        var service = new RagEvalService(entityDetector, graphSearch, embeddings, chunks,
+                rerankerActif, 8, List.of(new RagEvalService.EvalCase("q", "spec-040")));
+
+        RagEvalService.Report report = service.evaluate();
+
+        assertThat(report.rerankActive()).isTrue();
+        assertThat(report.foundAt4()).isEqualTo(1);       // vivier : trouvé
+        assertThat(report.rerankFoundAt4()).isZero();      // livré : éjecté
+        assertThat(report.summary()).contains("RÉTROGRADÉE par le rerank")
+                .contains("Après rerank");
+    }
+
+    @Test
     void sansCasConfiguresLeHarnessEstInactif() {
         var service = service(List.of());
         assertThat(service.hasCases()).isFalse();

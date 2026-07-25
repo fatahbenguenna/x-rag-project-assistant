@@ -28,11 +28,20 @@ if grep -qE '^\s*enabled:\s*true' team-config.yml 2>/dev/null && grep -q 'rerank
   RR_REV="6f5ff65298512715a1e669753bc754d2bc8f367b"
   RR_BASE="https://huggingface.co/${RR_REPO}/resolve/${RR_REV}"
   echo "Téléchargement du modèle reranker (571 Mo, une seule fois)…"
-  docker compose exec -T rag-api sh -c '
+  # Téléchargement ATOMIQUE (.tmp puis mv) : un curl interrompu ne laisse pas de fichier
+  # partiel que le garde [ -f ] verrouillerait. Puis restart : le modèle n'est chargé
+  # qu'au démarrage de l'app (ApplicationReadyEvent), or elle a booté AVANT le download.
+  if docker compose exec -T rag-api sh -c '
     set -e; mkdir -p /models/reranker; cd /models/reranker
-    [ -f model_quantized.onnx ] || curl -fL "'"$RR_BASE"'/onnx/model_quantized.onnx" -o model_quantized.onnx
-    [ -f tokenizer.json ] || curl -fL "'"$RR_BASE"'/tokenizer.json" -o tokenizer.json
-  ' || echo "Téléchargement reranker en échec — l'app fonctionnera sans (passe-plat)."
+    [ -f model_quantized.onnx ] || { curl -fL "'"$RR_BASE"'/onnx/model_quantized.onnx" -o model_quantized.onnx.tmp \
+      && mv model_quantized.onnx.tmp model_quantized.onnx; }
+    [ -f tokenizer.json ] || { curl -fL "'"$RR_BASE"'/tokenizer.json" -o tokenizer.json.tmp \
+      && mv tokenizer.json.tmp tokenizer.json; }
+  '; then
+    docker compose restart rag-api
+  else
+    echo "Téléchargement reranker en échec — l'app fonctionnera sans (passe-plat)."
+  fi
 fi
 
 # ADMIN_TOKEN (si configuré) protège les POST /api/admin/**
