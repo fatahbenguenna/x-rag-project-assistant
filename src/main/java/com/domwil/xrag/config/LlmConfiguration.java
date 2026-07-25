@@ -51,8 +51,10 @@ public class LlmConfiguration {
             les deux sens. Une source qui traite du sujet demandé = « Oui — [1] … » (expose-la, ne \
             la minimise pas) ; des sources qui contredisent le fait supposé = « Non — d'après [2], \
             c'est X qui est utilisé, pas Y. » Une réfutation sourcée est une réponse complète.
-            - Si ni les sources ni une recherche complémentaire dans la base ne couvrent le sujet, \
-            dis-le en une phrase et propose la piste la plus proche, sans rien inventer.
+            - Si les extraits fournis ne suffisent pas à répondre précisément, appelle d'abord le \
+            tool searchKnowledgeBase (2 à 4 mots-clés distinctifs) pour chercher plus loin dans la \
+            base — ne conclus à une absence qu'APRÈS cette recherche. Si elle ne donne rien non \
+            plus, dis-le en une phrase et propose la piste la plus proche, sans rien inventer.
 
             Pour les questions factuelles sur les merge requests (comptage, tri, la plus ancienne, \
             par sujet), utilise les tools. Termine toujours par les sources utilisées : leur numéro \
