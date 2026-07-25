@@ -42,7 +42,19 @@ public class JdbcChunkRepository implements ChunkRepository {
                         ON CONFLICT (id) DO UPDATE SET
                             project = EXCLUDED.project, title = EXCLUDED.title,
                             content = EXCLUDED.content, url = EXCLUDED.url,
-                            node_ids = EXCLUDED.node_ids, embedding = EXCLUDED.embedding,
+                            -- Fusion : les rattachements déterministes suivent la ré-extraction
+                            -- (EXCLUDED), mais les topic:* issus de l'enrichissement LLM sont
+                            -- PRÉSERVÉS — l'écrasement brut les perdait à chaque re-embed
+                            -- (érosion silencieuse, revue 2026-07 H6).
+                            node_ids = (
+                                SELECT coalesce(array_agg(DISTINCT nid), EXCLUDED.node_ids)
+                                FROM (
+                                    SELECT unnest(EXCLUDED.node_ids) nid
+                                    UNION
+                                    SELECT n FROM unnest(rag_chunks.node_ids) n WHERE n LIKE 'topic:%'
+                                ) merged
+                            ),
+                            embedding = EXCLUDED.embedding,
                             indexed_version = EXCLUDED.indexed_version, updated_at = now()
                         """,
                 chunks.stream().map(c -> new Object[]{
