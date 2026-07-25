@@ -27,6 +27,30 @@ public class JdbcMaintenanceRepository implements MaintenanceRepository {
     }
 
     @Override
+    public int purgeUnreferencedTopics() {
+        // Un TOPIC n'est jamais atteint par purgeOrphanNodes (arête vers le projet + alias
+        // créés systématiquement) : on le purge dès qu'aucun chunk ne le référence. Alias
+        // et arêtes d'abord (FK graph_edges -> graph_nodes).
+        jdbc.update("""
+                DELETE FROM entity_aliases a WHERE a.node_id IN (
+                    SELECT n.id FROM graph_nodes n WHERE n.type = 'TOPIC'
+                      AND NOT EXISTS (SELECT 1 FROM rag_chunks c WHERE c.node_ids @> ARRAY[n.id]))
+                """);
+        jdbc.update("""
+                DELETE FROM graph_edges e WHERE e.src IN (
+                    SELECT n.id FROM graph_nodes n WHERE n.type = 'TOPIC'
+                      AND NOT EXISTS (SELECT 1 FROM rag_chunks c WHERE c.node_ids @> ARRAY[n.id]))
+                   OR e.dst IN (
+                    SELECT n.id FROM graph_nodes n WHERE n.type = 'TOPIC'
+                      AND NOT EXISTS (SELECT 1 FROM rag_chunks c WHERE c.node_ids @> ARRAY[n.id]))
+                """);
+        return jdbc.update("""
+                DELETE FROM graph_nodes n WHERE n.type = 'TOPIC'
+                  AND NOT EXISTS (SELECT 1 FROM rag_chunks c WHERE c.node_ids @> ARRAY[n.id])
+                """);
+    }
+
+    @Override
     public void vacuumAnalyze() {
         // Hors transaction (autocommit JdbcTemplate). Index HNSW conservé, jamais reconstruit.
         jdbc.execute("VACUUM ANALYZE rag_chunks");

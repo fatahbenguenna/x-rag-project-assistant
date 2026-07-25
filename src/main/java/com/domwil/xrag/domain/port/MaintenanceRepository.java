@@ -8,6 +8,14 @@ public interface MaintenanceRepository {
     /** Supprime les nœuds sans arête ni chunk rattaché. Retourne le nombre purgé. */
     int purgeOrphanNodes();
 
+    /**
+     * Supprime les nœuds TOPIC (avec leurs arêtes et alias) qu'aucun chunk ne référence
+     * plus — les topics sont dérivés et jetables, le prochain enrichissement recrée ce
+     * qui manque. Sans ce GC, graph_nodes/entity_aliases croissent de façon monotone
+     * (purgeOrphanNodes ne les atteint jamais : arête + alias systématiques).
+     */
+    int purgeUnreferencedTopics();
+
     /** VACUUM ANALYZE des tables chaudes (l'index HNSW n'est jamais reconstruit). */
     void vacuumAnalyze();
 

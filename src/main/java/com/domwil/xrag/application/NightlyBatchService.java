@@ -93,21 +93,20 @@ public class NightlyBatchService {
     }
 
     /**
-     * Enrichissement LLM du graphe (décision d'architecture n°10) : uniquement si activé
-     * (config) ET si l'éval montre le trou de rattachement — sinon l'extraction déterministe
-     * suffit et on n'ajoute pas de coût LLM.
+     * Enrichissement LLM du graphe (décision d'architecture n°10) : chaque nuit, les
+     * documents SANS nœud TOPIC (nouveaux fichiers, docs jamais enrichis) sont traités,
+     * plafonnés par nuit — puis GC des topics que plus aucun chunk ne référence.
+     * L'ancien gate sur le ratio GLOBAL (< 50 %) ne se rouvrait jamais une fois franchi :
+     * les nouveaux documents restaient définitivement sans topic (revue 2026-07, H6).
      */
     private void enrichGraphIfNeeded() {
         if (!llmEnrichmentEnabled) {
             return;
         }
-        var metrics = graphQuality.evaluate().metrics();
-        if (metrics.linkedChunkRatio() >= GraphQualityService.MIN_LINKED_CHUNK_RATIO) {
-            return;
-        }
-        log.info("Enrichissement LLM du graphe (décision 10, {}% de chunks rattachés) : {}",
-                Math.round(metrics.linkedChunkRatio() * 100),
-                graphEnrichment.enrich(MAX_ENRICHMENT_DOCS));
+        var report = graphEnrichment.enrichSources(java.util.List.of(), MAX_ENRICHMENT_DOCS);
+        int purgedTopics = maintenance.purgeUnreferencedTopics();
+        log.info("Enrichissement LLM du graphe (décision 10) : {} — {} topic(s) non référencé(s) purgé(s)",
+                report, purgedTopics);
     }
 
     /** Postgres + Ollama (embedding minimal) doivent répondre avant de toucher à l'index. */
