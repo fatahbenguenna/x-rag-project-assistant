@@ -31,6 +31,14 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+      <!-- Versions Testcontainers (tests d'intégration JDBC) -->
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>1.21.3</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <!-- Aligne les artefacts DJL (reranker cross-encoder ONNX in-process) -->
       <dependency>
         <groupId>ai.djl</groupId>
@@ -108,6 +116,23 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Tests d'intégration JDBC ciblés (Testcontainers pgvector) : les requêtes SQL
+         complexes ont déjà laissé passer des bugs que les mocks ne voient pas -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -117,6 +142,19 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <!-- docker-java (Testcontainers) interroge l'API Docker en v1.32 (legacy) ;
+                 les démons récents (min 1.40) répondent 400 et les tests d'intégration
+                 seraient silencieusement ignorés. Sur un Docker antérieur à 25 (API < 1.44),
+                 surcharger : mvn test -Dapi.version=1.43 -->
+            <api.version>1.44</api.version>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
