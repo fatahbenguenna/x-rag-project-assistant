@@ -20,8 +20,10 @@ import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 /**
  * Architecture LLM commutable via ChatClient : profil ollama (local,
@@ -36,65 +38,82 @@ public class LlmConfiguration {
             Confluence, son code, ses merge requests et ses tickets Jira. Tu réponds en français, \
             directement et de façon concise (environ 200 mots maximum pour une réponse descriptive).
 
-            Le contexte fourni fait autorité. Le bloc <graphe>, les sources numérotées du bloc \
-            <documents> et les résultats des tools sont le fruit d'une recherche déjà effectuée pour \
-            toi dans les systèmes de l'équipe : traite-les comme fiables et à jour. Dès qu'une source \
-            concerne la question, réponds à partir de son contenu et cite-la.
+            Le contexte fourni fait autorité : le bloc <graphe>, les sources numérotées du bloc \
+            <documents> et les résultats des tools sont une recherche déjà effectuée pour toi dans \
+            les systèmes de l'équipe. Tu ES l'interface de Confluence, Jira et GitLab — ne renvoie \
+            jamais l'utilisateur les consulter par lui-même, et ne mentionne jamais tes outils \
+            internes dans le texte de ta réponse.
 
-            RÈGLE ABSOLUE : si une source du contexte concerne le sujet demandé, même partiellement, \
-            commence ta réponse par « Oui » puis réponds à partir de cette source. Dans ce cas, il \
-            t'est INTERDIT d'écrire « Non », « Aucune information », « il n'y a pas » ou « pas \
-            d'information spécifique » : ce serait contredire une source que tu viens de trouver.
+            Règle d'ancrage — ta réponse suit les sources, dans les deux sens :
+            - Si des sources répondent à la question, réponds directement à partir de leur contenu, \
+            en entier (lis chaque extrait jusqu'au bout avant de conclure qu'un détail y manque).
+            - Question fermée (« y a-t-il… », « est-ce que… ») : tranche selon les sources, dans \
+            les deux sens. Une source qui traite du sujet demandé = « Oui — [1] … » (expose-la, ne \
+            la minimise pas) ; des sources qui contredisent le fait supposé = « Non — d'après [2], \
+            c'est X qui est utilisé, pas Y. » Une réfutation sourcée est une réponse complète.
+            - Si les extraits fournis ne suffisent pas à répondre précisément, appelle d'abord le \
+            tool searchKnowledgeBase (2 à 4 mots-clés distinctifs) pour chercher plus loin dans la \
+            base — ne conclus à une absence qu'APRÈS cette recherche. Si elle ne donne rien non \
+            plus, dis-le en une phrase et propose la piste la plus proche, sans rien inventer.
 
-            Marche à suivre :
-            - Repère les sources qui traitent du sujet demandé, puis construis ta réponse à partir de \
-            leur contenu (résume, relie, explique).
-            - Termine toujours par les sources utilisées : leur numéro et leur référence (page, \
-            fichier, MR, issue).
-            - Pour les questions factuelles sur les merge requests (comptage, tri, la plus ancienne \
-            MR ouverte, MRs liées à un sujet), appuie-toi sur les tools.
+            Pour les questions factuelles sur les merge requests (comptage, tri, la plus ancienne, \
+            par sujet), utilise les tools. Termine toujours par les sources utilisées : leur numéro \
+            et leur référence (page, fichier, MR, issue).""";
 
-            Tu ES l'interface de Confluence, Jira et GitLab : ne renvoie jamais l'utilisateur les \
-            consulter « directement ». Quand une source correspond au sujet, commence par « Oui » et \
-            expose-la — ne conclus pas qu'il n'existe « aucune information ». Si les extraits fournis \
-            ne contiennent pas de quoi répondre précisément, appelle d'abord le tool searchKnowledgeBase \
-            avec des mots-clés bien choisis pour chercher plus loin dans la base. Ne signale une absence \
-            qu'APRÈS cette recherche, si vraiment aucune source ni aucun tool ne concerne la question ; \
-            dans ce cas, dis-le en une phrase et propose la reformulation ou le projet le plus proche, \
-            sans rien inventer.
+    /**
+     * Prompt du client de synthèse (fiches projet, extractions longues) : les documents
+     * générés ne portent ni le plafond de concision du chat ni sa règle d'ancrage — le
+     * partage du prompt de chat étranglait les fiches « premium » à ~200 mots (revue
+     * 2026-07, H5).
+     */
+    static final String SYNTHESIS_SYSTEM = """
+            Tu rédiges des documents techniques internes en français, complets, structurés et \
+            fidèles aux informations fournies. Développe chaque section avec toutes les \
+            informations disponibles — pas de limite de longueur. N'invente rien : ce que les \
+            informations fournies ne couvrent pas est signalé en une ligne. Termine par les \
+            sources utilisées.""";
 
-            Exemple.
-            Question : « Y a-t-il un ticket sur la fusion des rôles et de la sécurité (RoleAuthority) ? »
-            Contexte : [1] issue FPSSUITE-2 — « Fusionner RoleAuthority et la gestion des rôles… »
-            Réponse attendue : « Oui. L'issue FPSSUITE-2 porte sur la fusion de RoleAuthority avec la \
-            gestion de la sécurité : [points clés de l'extrait]. Source : [1] issue FPSSUITE-2. »""";
-
+    /** Client du chat RAG (prompt d'ancrage + concision). {@code @Primary} : l'injection par défaut. */
     @Bean
-    public ChatClient chatClient(TeamConfig config,
-                                 ObjectProvider<OllamaChatModel> ollama,
-                                 ObjectProvider<GoogleGenAiChatModel> gemini) {
+    @Primary
+    public ChatClient ragChatClient(TeamConfig config,
+                                    ObjectProvider<OllamaChatModel> ollama,
+                                    ObjectProvider<GoogleGenAiChatModel> gemini) {
+        return clientBuilder(config, ollama, gemini).defaultSystem(SYSTEM_PROMPT).build();
+    }
+
+    /** Client des générations longues (fiches projet, extraction de topics) — sans le prompt de chat. */
+    @Bean("synthesisChatClient")
+    public ChatClient synthesisChatClient(TeamConfig config,
+                                          ObjectProvider<OllamaChatModel> ollama,
+                                          ObjectProvider<GoogleGenAiChatModel> gemini) {
+        return clientBuilder(config, ollama, gemini).defaultSystem(SYNTHESIS_SYSTEM).build();
+    }
+
+    private ChatClient.Builder clientBuilder(TeamConfig config,
+                                             ObjectProvider<OllamaChatModel> ollama,
+                                             ObjectProvider<GoogleGenAiChatModel> gemini) {
         String provider = config.llm().provider();
         return switch (provider) {
             case "ollama" -> ChatClient.builder(require(ollama.getIfAvailable(), provider))
-                    .defaultSystem(SYSTEM_PROMPT)
                     // num_ctx : la fenêtre Ollama par défaut (2048) tronquait silencieusement les
                     // premières sources du prompt RAG (cause du hedging) ; 8192 couvre large.
-                    // Température basse : réponses factuelles, moins de disclaimers spéculatifs.
+                    // Température basse : réponses factuelles ; repeat_penalty/top_p contre le
+                    // décodage dégénéré du 7B (paragraphes dupliqués) sans sacrifier le factuel.
                     .defaultOptions(OllamaChatOptions.builder()
                             .model(config.llm().model())
                             .numCtx(8192)
-                            .temperature(0.1))
-                    .build();
-            case "gemini" -> ChatClient.builder(require(gemini.getIfAvailable(), provider))
-                    .defaultSystem(SYSTEM_PROMPT)
-                    .build();
+                            .temperature(0.1)
+                            .repeatPenalty(1.1)
+                            .topP(0.9));
+            case "gemini" -> ChatClient.builder(require(gemini.getIfAvailable(), provider));
             default -> throw new IllegalStateException(
                     "llm.provider non supporté : " + provider + " (attendu : ollama | gemini)");
         };
     }
 
     @Bean
-    public TopicExtractor topicExtractor(ChatClient chatClient) {
+    public TopicExtractor topicExtractor(@Qualifier("synthesisChatClient") ChatClient chatClient) {
         return new LlmTopicExtractor(chatClient);
     }
 

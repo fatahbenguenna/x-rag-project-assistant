@@ -27,6 +27,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -82,7 +83,8 @@ public class JobsConfiguration implements SchedulingConfigurer {
     @Bean
     public ProjectSheetService projectSheetService(AliasResolver aliases, GraphSearchRepository graphSearch,
                                                    ChunkRepository chunks, EmbeddingModel embeddingModel,
-                                                   ChatClient chatClient, IngestionService ingestion) {
+                                                   @Qualifier("synthesisChatClient") ChatClient chatClient,
+                                                   IngestionService ingestion) {
         return new ProjectSheetService(aliases, graphSearch, chunks, embeddingModel, chatClient, ingestion);
     }
 
