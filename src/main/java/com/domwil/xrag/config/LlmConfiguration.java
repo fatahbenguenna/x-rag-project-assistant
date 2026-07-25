@@ -124,7 +124,18 @@ public class LlmConfiguration {
         // Le fallback ne s'applique qu'en local : sur un provider distant, le
         // modèle principal est déjà rapide et le nom qwen n'aurait aucun sens.
         String fallback = "ollama".equals(config.llm().provider()) ? config.llm().fallbackModel() : null;
-        return new ModelRouter(fallback);
+        if (fallback == null || fallback.isBlank()) {
+            return new ModelRouter(null);
+        }
+        // Options COMPLÈTES (pas un simple nom de modèle) : ChatClient.options(...)
+        // remplace les defaultOptions — sans num_ctx ici, le chemin fallback
+        // retomberait sur la fenêtre par défaut du serveur Ollama et le prompt RAG
+        // serait tronqué silencieusement (revue adversariale 2026-07).
+        return new ModelRouter(OllamaChatOptions.builder()
+                .model(fallback)
+                .numCtx(8192)
+                .temperature(0.1)
+                .build());
     }
 
     @Bean

@@ -118,7 +118,7 @@ public class RagChatService {
         // Descriptif → modèle fallback léger, sans tools (les petits modèles sont
         // peu fiables en function calling et le descriptif n'en a pas besoin).
         // Modèle principal → tools MRs + recherche plein-texte de la base de connaissances.
-        spec = routed != null ? spec.options(routed)
+        spec = routed != null ? spec.options(routed.mutate())
                 : spec.tools(mergeRequestTools, knowledgeBaseTools);
         return spec.stream()
                 .chatResponse();
