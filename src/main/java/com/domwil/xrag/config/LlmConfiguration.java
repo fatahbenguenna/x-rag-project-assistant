@@ -95,18 +95,21 @@ public class LlmConfiguration {
                                              ObjectProvider<GoogleGenAiChatModel> gemini) {
         String provider = config.llm().provider();
         return switch (provider) {
+            // num_ctx/température configurables par équipe (team-config llm.num-ctx /
+            // llm.temperature, défauts 8192 / 0.1) ; repeat_penalty/top_p restent des
+            // correctifs de décodage du 7B, pas des choix d'équipe.
             case "ollama" -> ChatClient.builder(require(ollama.getIfAvailable(), provider))
-                    // num_ctx : la fenêtre Ollama par défaut (2048) tronquait silencieusement les
-                    // premières sources du prompt RAG (cause du hedging) ; 8192 couvre large.
-                    // Température basse : réponses factuelles ; repeat_penalty/top_p contre le
-                    // décodage dégénéré du 7B (paragraphes dupliqués) sans sacrifier le factuel.
                     .defaultOptions(OllamaChatOptions.builder()
                             .model(config.llm().model())
-                            .numCtx(8192)
-                            .temperature(0.1)
+                            .numCtx(config.llm().numCtx())
+                            .temperature(config.llm().temperature())
                             .repeatPenalty(1.1)
                             .topP(0.9));
-            case "gemini" -> ChatClient.builder(require(gemini.getIfAvailable(), provider));
+            // La température s'applique AUSSI au provider distant : sans elle, Gemini
+            // repartait à ~1.0 et perdait tout le cadrage factuel (revue 2026-07, M5).
+            case "gemini" -> ChatClient.builder(require(gemini.getIfAvailable(), provider))
+                    .defaultOptions(org.springframework.ai.google.genai.GoogleGenAiChatOptions.builder()
+                            .temperature(config.llm().temperature()));
             default -> throw new IllegalStateException(
                     "llm.provider non supporté : " + provider + " (attendu : ollama | gemini)");
         };
@@ -152,8 +155,8 @@ public class LlmConfiguration {
         // serait tronqué silencieusement (revue adversariale 2026-07).
         return new ModelRouter(OllamaChatOptions.builder()
                 .model(fallback)
-                .numCtx(8192)
-                .temperature(0.1)
+                .numCtx(config.llm().numCtx())
+                .temperature(config.llm().temperature())
                 .build());
     }
 

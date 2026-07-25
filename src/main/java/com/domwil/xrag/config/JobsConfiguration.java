@@ -127,6 +127,6 @@ public class JobsConfiguration implements SchedulingConfigurer {
                                                    TeamConfig config, Notifier notifier) {
         return new NightlyBatchService(jdbc, embeddingModel, syncService, maintenance,
                 projectSheets, smokeTests, ragEval, graphQuality, graphEnrichment,
-                config.extractors().llm(), notifier);
+                config.extractors().llm(), config.extractors().llmMaxDocsPerNight(), notifier);
     }
 }

@@ -1,6 +1,8 @@
 package com.domwil.xrag.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -25,7 +27,7 @@ public record TeamConfig(
         Retrieval retrieval,
         Eval eval,
         Schedule schedule,
-        Extractors extractors
+        @Valid Extractors extractors
 ) {
 
     public TeamConfig {
@@ -34,17 +36,29 @@ public record TeamConfig(
         retrieval = retrieval == null ? new Retrieval(null, null, null) : retrieval;
         eval = eval == null ? new Eval(List.of()) : eval;
         schedule = schedule == null ? new Schedule(null) : schedule;
-        extractors = extractors == null ? new Extractors(true, true, false, false) : extractors;
+        extractors = extractors == null ? new Extractors(true, true, false, false, null) : extractors;
     }
 
+    /**
+     * @param numCtx      fenêtre de contexte Ollama — le défaut serveur (2048-4096) tronque
+     *                    silencieusement le prompt RAG ; 8192 couvre large. Sans objet pour
+     *                    un provider distant. Mémoire KV cache ≈ proportionnelle : voir
+     *                    OLLAMA_KV_CACHE_TYPE dans .env.example sur machine contrainte.
+     * @param temperature bas = factuel (défaut 0.1) — appliqué à TOUS les providers (la
+     *                    température par défaut de Gemini (~1.0) perdrait le cadrage factuel)
+     */
     public record Llm(
             @NotBlank String provider,
             @NotBlank String model,
             String fallbackModel,
-            String embeddingModel
+            String embeddingModel,
+            @Min(1) Integer numCtx,
+            @DecimalMin("0.0") Double temperature
     ) {
         public Llm {
             embeddingModel = embeddingModel == null ? "bge-m3" : embeddingModel;
+            numCtx = numCtx == null ? 8192 : numCtx;
+            temperature = temperature == null ? 0.1 : temperature;
         }
     }
 
@@ -127,6 +141,15 @@ public record TeamConfig(
      * @param llm enrichissement LLM nocturne du graphe (décision d'architecture n°10) : à
      *            n'activer que si l'éval de qualité montre des trous (chunks non rattachés)
      */
-    public record Extractors(boolean java, boolean typescript, boolean python, boolean llm) {
+    /**
+     * @param llm             enrichissement LLM nocturne du graphe (décision n°10)
+     * @param llmMaxDocsPerNight plafond de documents topic-enrichis par nuit (budget de
+     *                           temps du batch — le backlog restant suit les nuits suivantes)
+     */
+    public record Extractors(boolean java, boolean typescript, boolean python, boolean llm,
+                             @Min(1) Integer llmMaxDocsPerNight) {
+        public Extractors {
+            llmMaxDocsPerNight = llmMaxDocsPerNight == null ? 150 : llmMaxDocsPerNight;
+        }
     }
 }
