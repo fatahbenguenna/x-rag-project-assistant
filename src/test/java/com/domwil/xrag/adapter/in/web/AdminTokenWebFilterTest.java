@@ -64,6 +64,18 @@ class AdminTokenWebFilterTest {
     }
 
     @Test
+    void postAdminAvecCheminPourcentEncodeRejete() {
+        // /%61pi/admin = /api/admin une fois décodé : le routage WebFlux décode, le filtre
+        // doit matcher sur la même vue décodée — sinon bypass complet (revue adversariale).
+        var exchange = run(new AdminTokenWebFilter(TOKEN),
+                MockServerHttpRequest.method(org.springframework.http.HttpMethod.POST,
+                        java.net.URI.create("http://localhost/%61pi/admin/sync")).build());
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
     void horsAdminNonFiltre() {
         run(new AdminTokenWebFilter(TOKEN),
                 MockServerHttpRequest.post("/v1/chat/completions").build());

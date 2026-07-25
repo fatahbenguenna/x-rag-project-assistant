@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
@@ -30,7 +32,14 @@ public class AdminTokenWebFilter implements WebFilter {
     public static final String HEADER = "X-Admin-Token";
 
     private static final Logger log = LoggerFactory.getLogger(AdminTokenWebFilter.class);
-    private static final String ADMIN_PATH_PREFIX = "/api/admin";
+
+    /**
+     * Même moteur de correspondance que le routage WebFlux (segments DÉCODÉS) : un
+     * startsWith sur le chemin brut se contournait par pourcent-encodage
+     * (« /%61pi/admin/sync » atteint le contrôleur sans matcher le préfixe).
+     */
+    private static final PathPattern ADMIN_PATTERN =
+            new PathPatternParser().parse("/api/admin/**");
 
     private final String adminToken;
 
@@ -47,7 +56,7 @@ public class AdminTokenWebFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         var request = exchange.getRequest();
         boolean protectedCall = !adminToken.isEmpty()
-                && request.getPath().value().startsWith(ADMIN_PATH_PREFIX)
+                && ADMIN_PATTERN.matches(request.getPath().pathWithinApplication())
                 && !HttpMethod.GET.equals(request.getMethod());
         if (!protectedCall || tokenMatches(request.getHeaders().getFirst(HEADER))) {
             return chain.filter(exchange);

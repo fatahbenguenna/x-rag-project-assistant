@@ -24,7 +24,7 @@ echo "==> Lancement de l'indexation initiale complète"
 # ADMIN_TOKEN (si configuré) protège les POST /api/admin/**
 ADMIN_HEADER=()
 [ -n "${ADMIN_TOKEN:-}" ] && ADMIN_HEADER=(-H "X-Admin-Token: $ADMIN_TOKEN")
-curl -sf -X POST "${ADMIN_HEADER[@]}" "$API_URL/api/admin/sync?full=true" >/dev/null
+curl -sf -X POST ${ADMIN_HEADER[@]+"${ADMIN_HEADER[@]}"} "$API_URL/api/admin/sync?full=true" >/dev/null
 
 echo "==> Indexation en cours. Suivi (Ctrl-C pour arrêter le suivi, l'indexation continue) :"
 previous=""
@@ -40,6 +40,6 @@ while true; do
 done
 
 echo "==> Smoke test"
-curl -sf -X POST "${ADMIN_HEADER[@]}" "$API_URL/api/admin/smoke-test" || echo "Smoke test en échec — voir les logs rag-api"
+curl -sf -X POST ${ADMIN_HEADER[@]+"${ADMIN_HEADER[@]}"} "$API_URL/api/admin/smoke-test" || echo "Smoke test en échec — voir les logs rag-api"
 
 echo "==> Terminé. Poser une question : curl -N -X POST $API_URL/api/chat -H 'Content-Type: application/json' -d '{\"question\":\"...\"}'"
