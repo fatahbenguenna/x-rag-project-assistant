@@ -6,7 +6,9 @@ import com.domwil.xrag.application.IndexingProgressTracker;
 import com.domwil.xrag.application.IngestionService;
 import com.domwil.xrag.application.NightlyBatchService;
 import com.domwil.xrag.application.GraphEnrichmentService;
+import com.domwil.xrag.application.EntityDetector;
 import com.domwil.xrag.application.ProjectSheetService;
+import com.domwil.xrag.application.RagEvalService;
 import com.domwil.xrag.application.RagChatService;
 import com.domwil.xrag.application.SmokeTestService;
 import com.domwil.xrag.application.SyncService;
@@ -94,6 +96,16 @@ public class JobsConfiguration implements SchedulingConfigurer {
     }
 
     @Bean
+    public RagEvalService ragEvalService(EntityDetector entityDetector, GraphSearchRepository graphSearch,
+                                         EmbeddingModel embeddingModel, ChunkRepository chunks,
+                                         TeamConfig config) {
+        var cases = config.eval().cases().stream()
+                .map(c -> new RagEvalService.EvalCase(c.question(), c.expected()))
+                .toList();
+        return new RagEvalService(entityDetector, graphSearch, embeddingModel, chunks, cases);
+    }
+
+    @Bean
     public GraphQualityService graphQualityService(GraphQualityRepository repository) {
         return new GraphQualityService(repository);
     }
@@ -108,11 +120,11 @@ public class JobsConfiguration implements SchedulingConfigurer {
     public NightlyBatchService nightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                                    SyncService syncService, MaintenanceRepository maintenance,
                                                    ProjectSheetService projectSheets, SmokeTestService smokeTests,
-                                                   GraphQualityService graphQuality,
+                                                   RagEvalService ragEval, GraphQualityService graphQuality,
                                                    GraphEnrichmentService graphEnrichment,
                                                    TeamConfig config, Notifier notifier) {
         return new NightlyBatchService(jdbc, embeddingModel, syncService, maintenance,
-                projectSheets, smokeTests, graphQuality, graphEnrichment,
+                projectSheets, smokeTests, ragEval, graphQuality, graphEnrichment,
                 config.extractors().llm(), notifier);
     }
 }

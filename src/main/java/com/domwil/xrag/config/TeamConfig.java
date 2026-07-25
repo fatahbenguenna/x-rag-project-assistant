@@ -23,6 +23,7 @@ public record TeamConfig(
         Map<String, List<String>> aliases,
         Map<String, List<String>> synonyms,
         Retrieval retrieval,
+        Eval eval,
         Schedule schedule,
         Extractors extractors
 ) {
@@ -31,6 +32,7 @@ public record TeamConfig(
         aliases = aliases == null ? Map.of() : Map.copyOf(aliases);
         synonyms = synonyms == null ? Map.of() : Map.copyOf(synonyms);
         retrieval = retrieval == null ? new Retrieval(null, null) : retrieval;
+        eval = eval == null ? new Eval(List.of()) : eval;
         schedule = schedule == null ? new Schedule(null) : schedule;
         extractors = extractors == null ? new Extractors(true, true, false, false) : extractors;
     }
@@ -76,6 +78,21 @@ public record TeamConfig(
             chunkLimit = chunkLimit == null ? 8 : chunkLimit;
             chunkExcerptChars = chunkExcerptChars == null ? 1800 : chunkExcerptChars;
         }
+    }
+
+    /**
+     * Cas d'évaluation du retrieval (recall@k) : pour chaque question canonique, la
+     * source attendue est identifiée par une sous-chaîne (insensible à la casse) de son
+     * path ou de son titre. Mesuré sans LLM (rapide, objectif) — prérequis au calibrage
+     * des poids de la recherche hybride et à la mesure du gain d'un reranker.
+     */
+    public record Eval(List<EvalCase> cases) {
+        public Eval {
+            cases = cases == null ? List.of() : List.copyOf(cases);
+        }
+    }
+
+    public record EvalCase(String question, String expected) {
     }
 
     public record Schedule(String nightly) {
