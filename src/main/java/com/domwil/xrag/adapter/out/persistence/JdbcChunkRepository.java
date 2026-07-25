@@ -128,7 +128,7 @@ public class JdbcChunkRepository implements ChunkRepository {
 
     @Override
     public List<ScoredChunk> hybridSearch(float[] embedding, String query, Set<String> boostNodeIds,
-                                          String project, int limit) {
+                                          String project, int limit, double graphBoost) {
         String vector = PgArrays.vector(embedding);
         String nodeIds = PgArrays.textArray(boostNodeIds);
         String tsQuery = orTsQuery(query);
@@ -150,7 +150,7 @@ public class JdbcChunkRepository implements ChunkRepository {
                         SELECT c.id, c.source, c.project, c.path, c.title, c.content, c.url,
                                (1 - (c.embedding <=> ?::vector)) * 0.6
                                + LEAST(COALESCE(ts_rank(c.tsv, to_tsquery('french', NULLIF(?, ''))), 0), 1.0) * 0.25
-                               + (CASE WHEN c.node_ids && ?::text[] THEN 0.3 ELSE 0 END) AS score
+                               + (CASE WHEN c.node_ids && ?::text[] THEN ? ELSE 0 END) AS score
                         FROM rag_chunks c
                         JOIN candidates ON candidates.id = c.id
                         WHERE c.embedding IS NOT NULL
@@ -164,7 +164,7 @@ public class JdbcChunkRepository implements ChunkRepository {
                 project, project, vector, CANDIDATES_PER_CHANNEL,
                 tsQuery, project, project, tsQuery, CANDIDATES_PER_CHANNEL,
                 nodeIds, project, project, CANDIDATES_PER_CHANNEL,
-                vector, tsQuery, nodeIds, limit);
+                vector, tsQuery, nodeIds, graphBoost, limit);
     }
 
     @Override

@@ -162,9 +162,10 @@ public class LlmConfiguration {
                                          EntityDetector entityDetector, GraphSearchRepository graphSearch,
                                          ChunkRepository chunks, MergeRequestTools mergeRequestTools,
                                          KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter,
+                                         com.domwil.xrag.domain.port.ChunkReranker reranker,
                                          TeamConfig config) {
         return new RagChatService(chatClient, embeddingModel, entityDetector, graphSearch,
-                chunks, mergeRequestTools, knowledgeBaseTools, modelRouter,
+                chunks, mergeRequestTools, knowledgeBaseTools, modelRouter, reranker,
                 config.retrieval().chunkLimit(), config.retrieval().chunkExcerptChars());
     }
 

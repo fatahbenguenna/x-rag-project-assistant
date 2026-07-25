@@ -2,6 +2,7 @@ package com.domwil.xrag.application;
 
 import com.domwil.xrag.domain.model.ScoredChunk;
 import com.domwil.xrag.domain.model.Subgraph;
+import com.domwil.xrag.domain.port.ChunkReranker;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
 import org.slf4j.Logger;
@@ -50,6 +51,7 @@ public class RagChatService {
     private final MergeRequestTools mergeRequestTools;
     private final KnowledgeBaseTools knowledgeBaseTools;
     private final ModelRouter modelRouter;
+    private final ChunkReranker reranker;
     private final int chunkLimit;
     private final int chunkExcerptChars;
 
@@ -57,7 +59,7 @@ public class RagChatService {
                           EntityDetector entityDetector, GraphSearchRepository graphSearch,
                           ChunkRepository chunks, MergeRequestTools mergeRequestTools,
                           KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter,
-                          int chunkLimit, int chunkExcerptChars) {
+                          ChunkReranker reranker, int chunkLimit, int chunkExcerptChars) {
         this.chatClient = chatClient;
         this.embeddingModel = embeddingModel;
         this.entityDetector = entityDetector;
@@ -66,6 +68,7 @@ public class RagChatService {
         this.mergeRequestTools = mergeRequestTools;
         this.knowledgeBaseTools = knowledgeBaseTools;
         this.modelRouter = modelRouter;
+        this.reranker = reranker;
         this.chunkLimit = chunkLimit;
         this.chunkExcerptChars = chunkExcerptChars;
     }
@@ -102,10 +105,16 @@ public class RagChatService {
         Set<String> seeds = entityDetector.detectNodeIds(question);
         Subgraph subgraph = graphSearch.neighborhood(seeds, GRAPH_DEPTH);
         float[] embedding = embeddingModel.embed(question);
-        List<ScoredChunk> retrieved =
-                chunks.hybridSearch(embedding, question, subgraph.nodeIds(), project, chunkLimit);
-        log.debug("Retrieval : {} entités, {} nœuds de sous-graphe, {} chunks",
-                seeds.size(), subgraph.nodes().size(), retrieved.size());
+        // Reranker actif : vivier élargi (~40) reclassé par le cross-encoder, et le boost
+        // graphe passe de 0.3 à 0.1 — il ne sert plus qu'au rappel du vivier, le
+        // cross-encoder jugeant la pertinence mieux que l'heuristique (revue 2026-07, M1).
+        int poolSize = reranker.candidatePoolSize(chunkLimit);
+        double graphBoost = poolSize > chunkLimit ? 0.1 : 0.3;
+        List<ScoredChunk> candidates =
+                chunks.hybridSearch(embedding, question, subgraph.nodeIds(), project, poolSize, graphBoost);
+        List<ScoredChunk> retrieved = reranker.rerank(question, candidates, chunkLimit);
+        log.debug("Retrieval : {} entités, {} nœuds de sous-graphe, {} candidats -> {} chunks",
+                seeds.size(), subgraph.nodes().size(), candidates.size(), retrieved.size());
 
         var spec = chatClient.prompt()
                 .user(user -> user.text(USER_TEMPLATE)

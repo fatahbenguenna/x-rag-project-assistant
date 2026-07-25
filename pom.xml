@@ -31,6 +31,14 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+      <!-- Aligne les artefacts DJL (reranker cross-encoder ONNX in-process) -->
+      <dependency>
+        <groupId>ai.djl</groupId>
+        <artifactId>bom</artifactId>
+        <version>0.36.0</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -72,6 +80,21 @@
       <groupId>com.github.javaparser</groupId>
       <artifactId>javaparser-core</artifactId>
       <version>3.26.4</version>
+    </dependency>
+
+    <!-- Reranker cross-encoder ONNX in-process (DJL ; onnxruntime CPU transitif via le BOM) -->
+    <dependency>
+      <groupId>ai.djl</groupId>
+      <artifactId>api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ai.djl.huggingface</groupId>
+      <artifactId>tokenizers</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ai.djl.onnxruntime</groupId>
+      <artifactId>onnxruntime-engine</artifactId>
+      <scope>runtime</scope>
     </dependency>
 
     <!-- Boot 4 : Liquibase passe par un starter dédié -->

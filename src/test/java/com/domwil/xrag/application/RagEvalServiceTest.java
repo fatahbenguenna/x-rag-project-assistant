@@ -2,6 +2,7 @@ package com.domwil.xrag.application;
 
 import com.domwil.xrag.domain.model.ScoredChunk;
 import com.domwil.xrag.domain.model.Subgraph;
+import com.domwil.xrag.adapter.out.rerank.NoOpChunkReranker;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,8 @@ class RagEvalServiceTest {
         when(entityDetector.detectNodeIds(anyString())).thenReturn(java.util.Set.of());
         when(graphSearch.neighborhood(any(), anyInt())).thenReturn(Subgraph.empty());
         when(embeddings.embed(anyString())).thenReturn(new float[]{1f});
-        return new RagEvalService(entityDetector, graphSearch, embeddings, chunks, cases);
+        return new RagEvalService(entityDetector, graphSearch, embeddings, chunks,
+                new NoOpChunkReranker(), 8, cases);
     }
 
     @Test
@@ -40,7 +42,7 @@ class RagEvalServiceTest {
                 new RagEvalService.EvalCase("q1", "spec-040"),      // rang 1 (par path)
                 new RagEvalService.EvalCase("q2", "environnements"), // rang 5 (par titre, casse ignorée)
                 new RagEvalService.EvalCase("q3", "introuvable")));   // absente
-        when(chunks.hybridSearch(any(), anyString(), any(), any(), anyInt()))
+        when(chunks.hybridSearch(any(), anyString(), any(), any(), anyInt(), org.mockito.ArgumentMatchers.anyDouble()))
                 .thenReturn(List.of(
                         chunk("specs/spec-040/plan.md", "Plan"),
                         chunk("a", "A"), chunk("b", "B"), chunk("c", "C"),

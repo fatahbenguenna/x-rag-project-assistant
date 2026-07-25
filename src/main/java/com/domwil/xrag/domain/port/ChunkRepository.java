@@ -53,8 +53,19 @@ public interface ChunkRepository {
      * @param boostNodeIds nœuds du sous-graphe (boost node_ids && ...)
      * @param project      filtre métadonnées par projet ({@code null} = tous)
      */
+    default List<ScoredChunk> hybridSearch(float[] embedding, String query, Set<String> boostNodeIds,
+                                           String project, int limit) {
+        return hybridSearch(embedding, query, boostNodeIds, project, limit, 0.3);
+    }
+
+    /**
+     * @param graphBoost poids du rattachement au sous-graphe dans le score combiné :
+     *                   0.3 sans reranker (le boost ordonne le top-K final), 0.1 avec
+     *                   (le cross-encoder juge la pertinence mieux que l'heuristique —
+     *                   le boost ne sert plus qu'au rappel du vivier).
+     */
     List<ScoredChunk> hybridSearch(float[] embedding, String query, Set<String> boostNodeIds,
-                                   String project, int limit);
+                                   String project, int limit, double graphBoost);
 
     /**
      * Recherche plein-texte déterministe (tsvector français) sur tous les chunks, indépendante

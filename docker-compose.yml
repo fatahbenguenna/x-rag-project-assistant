@@ -67,6 +67,9 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./team-config.yml:/config/team-config.yml:ro
+      # Modèle du reranker cross-encoder (optionnel — retrieval.reranker.enabled) :
+      # rempli par bootstrap.sh, comme les modèles Ollama vivent dans leur volume.
+      - reranker-models:/models/reranker
     ports:
       - "8080:8080"
     # Pas de depends_on ollama : le conteneur Ollama est optionnel (profil), et en mode
@@ -94,6 +97,7 @@ services:
 
 volumes:
   ollama-models:
+  reranker-models:
   pg-data:
   webui-data:
 

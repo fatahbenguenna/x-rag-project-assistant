@@ -98,11 +98,13 @@ public class JobsConfiguration implements SchedulingConfigurer {
     @Bean
     public RagEvalService ragEvalService(EntityDetector entityDetector, GraphSearchRepository graphSearch,
                                          EmbeddingModel embeddingModel, ChunkRepository chunks,
+                                         com.domwil.xrag.domain.port.ChunkReranker reranker,
                                          TeamConfig config) {
         var cases = config.eval().cases().stream()
                 .map(c -> new RagEvalService.EvalCase(c.question(), c.expected()))
                 .toList();
-        return new RagEvalService(entityDetector, graphSearch, embeddingModel, chunks, cases);
+        return new RagEvalService(entityDetector, graphSearch, embeddingModel, chunks,
+                reranker, config.retrieval().chunkLimit(), cases);
     }
 
     @Bean

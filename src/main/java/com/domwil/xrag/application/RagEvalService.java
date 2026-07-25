@@ -2,6 +2,7 @@ package com.domwil.xrag.application;
 
 import com.domwil.xrag.domain.model.ScoredChunk;
 import com.domwil.xrag.domain.model.Subgraph;
+import com.domwil.xrag.domain.port.ChunkReranker;
 import com.domwil.xrag.domain.port.ChunkRepository;
 import com.domwil.xrag.domain.port.GraphSearchRepository;
 import org.slf4j.Logger;
@@ -34,8 +35,12 @@ public class RagEvalService {
     public record EvalCase(String question, String expected) {
     }
 
-    /** Rang 1-indexé de la source attendue ({@code 0} = absente du top-{@value #EVAL_DEPTH}). */
-    public record CaseResult(String question, String expected, int rank, String topSource) {
+    /**
+     * @param rank            rang 1-indexé dans le vivier ({@code 0} = absente du top-{@value #EVAL_DEPTH})
+     * @param rankAfterRerank rang après reranking ({@code 0} = absente du top-K reclassé, ou reranker inactif)
+     */
+    public record CaseResult(String question, String expected, int rank, int rankAfterRerank,
+                             String topSource) {
     }
 
     public record Report(int total, long foundAt4, long foundAt8, long foundAt40,
@@ -57,8 +62,11 @@ public class RagEvalService {
             var sb = new StringBuilder("Éval retrieval : recall@4 %d/%d · recall@8 %d/%d · recall@40 %d/%d"
                     .formatted(foundAt4, total, foundAt8, total, foundAt40, total));
             for (CaseResult r : results) {
-                sb.append("\n- ").append(r.rank() >= 1 ? "rang " + r.rank() : "ABSENTE")
-                        .append(" — « ").append(r.question()).append(" » (attendu : ")
+                sb.append("\n- ").append(r.rank() >= 1 ? "rang " + r.rank() : "ABSENTE");
+                if (r.rankAfterRerank() >= 1) {
+                    sb.append(" (rerank : ").append(r.rankAfterRerank()).append(")");
+                }
+                sb.append(" — « ").append(r.question()).append(" » (attendu : ")
                         .append(r.expected()).append(")");
             }
             return sb.toString();
@@ -69,15 +77,19 @@ public class RagEvalService {
     private final GraphSearchRepository graphSearch;
     private final EmbeddingModel embeddingModel;
     private final ChunkRepository chunks;
+    private final ChunkReranker reranker;
+    private final int chunkLimit;
     private final List<EvalCase> cases;
 
     public RagEvalService(EntityDetector entityDetector, GraphSearchRepository graphSearch,
                           EmbeddingModel embeddingModel, ChunkRepository chunks,
-                          List<EvalCase> cases) {
+                          ChunkReranker reranker, int chunkLimit, List<EvalCase> cases) {
         this.entityDetector = entityDetector;
         this.graphSearch = graphSearch;
         this.embeddingModel = embeddingModel;
         this.chunks = chunks;
+        this.reranker = reranker;
+        this.chunkLimit = chunkLimit;
         this.cases = List.copyOf(cases);
     }
 
@@ -100,19 +112,27 @@ public class RagEvalService {
         Set<String> seeds = entityDetector.detectNodeIds(evalCase.question());
         Subgraph subgraph = graphSearch.neighborhood(seeds, GRAPH_DEPTH);
         float[] embedding = embeddingModel.embed(evalCase.question());
+        boolean rerankActive = reranker.candidatePoolSize(chunkLimit) > chunkLimit;
         List<ScoredChunk> candidates = chunks.hybridSearch(
-                embedding, evalCase.question(), subgraph.nodeIds(), null, EVAL_DEPTH);
+                embedding, evalCase.question(), subgraph.nodeIds(), null, EVAL_DEPTH,
+                rerankActive ? 0.1 : 0.3);
 
         String needle = evalCase.expected().toLowerCase(Locale.ROOT);
-        int rank = 0;
-        for (int i = 0; i < candidates.size(); i++) {
-            if (matches(candidates.get(i), needle)) {
-                rank = i + 1;
-                break;
+        int rank = rankOf(candidates, needle);
+        int rankAfterRerank = rerankActive
+                ? rankOf(reranker.rerank(evalCase.question(), candidates, chunkLimit), needle)
+                : 0;
+        String top = candidates.isEmpty() ? "(aucun candidat)" : candidates.getFirst().citation();
+        return new CaseResult(evalCase.question(), evalCase.expected(), rank, rankAfterRerank, top);
+    }
+
+    private static int rankOf(List<ScoredChunk> chunks, String needle) {
+        for (int i = 0; i < chunks.size(); i++) {
+            if (matches(chunks.get(i), needle)) {
+                return i + 1;
             }
         }
-        String top = candidates.isEmpty() ? "(aucun candidat)" : candidates.getFirst().citation();
-        return new CaseResult(evalCase.question(), evalCase.expected(), rank, top);
+        return 0;
     }
 
     private static boolean matches(ScoredChunk chunk, String needle) {
