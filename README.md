@@ -20,11 +20,11 @@ Ce README est le point d'entrée ; le reste de la documentation est réparti par
 
 | Document | Rôle | Quand le lire |
 |---|---|---|
-| 🗺️ **[WORKFLOWS.md](WORKFLOWS.md)** | Les flux du système en **schémas Mermaid** : quel modèle répond, pipeline GraphRAG, batch nocturne, résolution d'auth, topologie Ollama, temps réel GitLab | Pour comprendre le système en un coup d'œil |
-| 📘 **[RUNBOOK.md](RUNBOOK.md)** | Guide opérationnel pas à pas (🪟 Windows / 🐧 WSL) : installation, credentials, démarrage, **accès aux services** (dashboard `dashboard.html`, endpoints admin, éval), exploitation courante, dépannage | Mise en service, puis exploitation quotidienne |
-| ✅ **[VALIDATION.md](VALIDATION.md)** | Checklist de mise en service : critères de succès **mesurables** (santé, indexation, qualité du graphe, latences vs cibles, batch nocturne, temps réel GitLab) | Une fois l'onboarding ci-dessous terminé |
+| 🗺️ **[WORKFLOWS.md](docs/WORKFLOWS.md)** | Les flux du système en **schémas Mermaid** : quel modèle répond, pipeline GraphRAG, batch nocturne, résolution d'auth, topologie Ollama, temps réel GitLab | Pour comprendre le système en un coup d'œil |
+| 📘 **[RUNBOOK.md](docs/RUNBOOK.md)** | Guide opérationnel pas à pas (🪟 Windows / 🐧 WSL) : installation, credentials, démarrage, **accès aux services** (dashboard `dashboard.html`, endpoints admin, éval), exploitation courante, dépannage | Mise en service, puis exploitation quotidienne |
+| ✅ **[VALIDATION.md](docs/VALIDATION.md)** | Checklist de mise en service : critères de succès **mesurables** (santé, indexation, qualité du graphe, latences vs cibles, batch nocturne, temps réel GitLab) | Une fois l'onboarding ci-dessous terminé |
 | 🧭 **[CLAUDE.md](CLAUDE.md)** | Contexte projet : décisions d'architecture validées, modèle de graphe, batch nocturne, exportabilité | Avant de contribuer au code |
-| 📚 **[docs/](docs/README.md)** | Connaissance long-terme (revue d'architecture, artefacts BMAD) | Approfondissement |
+| 📚 **[docs/](docs/README.md)** | Le reste de `docs/` : revue d'architecture, connaissance long-terme (lue par les agents BMAD — leurs artefacts vont dans `_bmad-output/`) | Approfondissement |
 
 ## Architecture (résumé)
 
@@ -113,7 +113,7 @@ peuvent pas altérer les plateformes :
    réseau**. Même un bug futur ne peut pas produire d'écriture avec vos credentials.
 
 Durcissements opérationnels (chmod du `.env`, cookies à exclure, scopes GitLab) :
-RUNBOOK.md, « Garanties lecture seule ».
+docs/RUNBOOK.md, « Garanties lecture seule ».
 
 ## CI et images versionnées
 

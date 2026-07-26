@@ -153,4 +153,4 @@ Socle RAG + GraphRAG : ~2 semaines. Exportabilité (config, plugins, packaging, 
 - Config : `_bmad/core/config.yaml` et `_bmad/bmm/config.yaml` — communication et documents en **français**.
 - Usage **brownfield** uniquement : les artefacts BMAD (PRD, architecture, epics, stories) concernent les évolutions futures, pas la re-spécification des PRs déjà mergées.
 - Les décisions de ce CLAUDE.md restent la référence : les agents BMAD (Analyst, PM, Architect, Dev...) ne doivent pas remettre en cause la section « Décisions d'architecture ».
-- Emplacements : artefacts de planification dans `_bmad-output/planning-artifacts/`, artefacts d'implémentation dans `_bmad-output/implementation-artifacts/`, connaissance long-terme dans `docs/` (voir `docs/README.md`).
+- Emplacements : artefacts de planification dans `_bmad-output/planning-artifacts/`, artefacts d'implémentation dans `_bmad-output/implementation-artifacts/`, documentation opérationnelle (RUNBOOK, VALIDATION, WORKFLOWS) et connaissance long-terme dans `docs/` (voir `docs/README.md`).

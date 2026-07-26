@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mesure des latences du chat streamé contre les cibles du cadrage (VALIDATION.md §4).
+# Mesure des latences du chat streamé contre les cibles du cadrage (docs/VALIDATION.md §4).
 # Usage : API_URL=http://localhost:8080 ./scripts/measure-latency.sh ["question custom"]
 set -euo pipefail
 

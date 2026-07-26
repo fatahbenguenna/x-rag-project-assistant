@@ -5,7 +5,8 @@ Guide opérationnel pas à pas. Convention :
 - 🪟 **Windows** : navigateur, explorateur de fichiers, PowerShell (uniquement quand indiqué)
 - 🐧 **WSL Ubuntu** : toutes les commandes shell — ouvrez un terminal Ubuntu (`wsl` ou l'app Terminal)
 
-Complémentaire de `README.md` (vue d'ensemble) et `VALIDATION.md` (critères de succès mesurables).
+Complémentaire du `README.md` (vue d'ensemble, racine du dépôt) et de `VALIDATION.md`
+(critères de succès mesurables, même dossier).
 
 ---
 
