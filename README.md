@@ -6,8 +6,8 @@ Merge Requests et les issues Jira.
 
 Exemples :
 
-- « Explique-moi le projet Elog en 5 principes »
-- « Comment faire communiquer Easy Loc et Epsilon ? »
+- « Explique-moi le projet fps-suite en 5 principes »
+- « Comment faire communiquer FPS KDS et fps-pos ? »
 - « Avons-nous eu un bug de persistance sur alpha ? »
 - « Quelle MR ouverte est la plus vieille ? »
 

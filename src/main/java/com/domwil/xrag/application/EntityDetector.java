@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * Détection d'entités dans une question : n-grammes (1 à 3 mots) normalisés,
- * résolus contre la table entity_aliases ("Easy Loc" -> project:easyloc).
+ * résolus contre la table entity_aliases ("FPS KDS" -> project:fpskds).
  */
 public class EntityDetector {
 

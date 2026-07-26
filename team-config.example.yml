@@ -39,9 +39,12 @@ sources:
 
 # Résolution d'entités : toutes les façons de nommer un projet/sujet -> id canonique.
 # Critique pour le graphe : sans alias, les nœuds se fragmentent.
+# La CLÉ devient l'id du nœud (project:<clé>) telle quelle : utiliser la forme
+# normalisée (minuscules, sans séparateurs — « fpspos », pas « fps-pos ») et la
+# garder identique partout. Les variantes avec séparateurs vont dans la liste.
 aliases:
-  easyloc: ["Easy Loc", "easy-loc", "EASYLOC"]
-  epsilon: ["Epsilon", "epsilon-service"]
+  fpskds: ["FPS KDS", "fps-kds", "FPSKDS"]
+  fpspos: ["fps-pos", "fps-pos-service"]
 
 # Synonymes de recherche métier↔code : élargissent la recherche de MRs par sujet
 # (tool searchMergeRequests) SANS toucher au graphe — contrairement à `aliases:`, aucun

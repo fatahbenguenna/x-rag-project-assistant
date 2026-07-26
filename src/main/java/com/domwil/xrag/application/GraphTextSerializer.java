@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 /**
  * Sérialise le sous-graphe en texte compact injecté au prompt :
- * une relation par ligne, "Easy Loc [PROJECT] -PUBLISHES-> orders [TOPIC]".
+ * une relation par ligne, "FPS KDS [PROJECT] -PUBLISHES-> orders [TOPIC]".
  */
 public final class GraphTextSerializer {
 

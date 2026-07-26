@@ -13,8 +13,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Résolution d'entités : toutes les façons de nommer un projet ("Easy Loc",
- * easy-loc, EASYLOC) pointent vers le même nœud canonique "project:easyloc".
+ * Résolution d'entités : toutes les façons de nommer un projet ("FPS KDS",
+ * fps-kds, FPSKDS) pointent vers le même nœud canonique "project:fpskds".
  * Alimenté par team-config.yml (aliases). Critique : sans résolution, le
  * graphe se fragmente.
  */
@@ -40,12 +40,12 @@ public class AliasResolver {
                 : Pattern.compile("(?i)(?<![\\p{L}\\p{N}])(" + String.join("|", alternatives) + ")(?![\\p{L}\\p{N}])");
     }
 
-    /** Forme normalisée : minuscules, sans séparateurs ("Easy Loc" -> "easyloc"). */
+    /** Forme normalisée : minuscules, sans séparateurs ("fps-kds" -> "fpskds"). */
     public static String normalize(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
-    /** Résout une mention vers l'id canonique de projet ("project:easyloc"). */
+    /** Résout une mention vers l'id canonique de projet ("project:fpskds"). */
     public Optional<String> resolveProjectId(String mention) {
         return Optional.ofNullable(normalizedToCanonical.get(normalize(mention)))
                 .map(AliasResolver::projectNodeId);

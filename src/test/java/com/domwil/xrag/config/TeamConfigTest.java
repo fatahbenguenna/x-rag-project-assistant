@@ -31,7 +31,7 @@ class TeamConfigTest {
         assertThat(config.sources().gitlab().branches()).containsExactly("main", "develop");
         assertThat(config.sources().jira().projects()).containsExactly("PASS", "INFRA");
 
-        assertThat(config.aliases()).containsEntry("easyloc", List.of("Easy Loc", "easy-loc", "EASYLOC"));
+        assertThat(config.aliases()).containsEntry("fpskds", List.of("FPS KDS", "fps-kds", "FPSKDS"));
 
         assertThat(config.schedule().nightly()).isEqualTo("0 0 2 * * *");
         assertThat(config.extractors().java()).isTrue();

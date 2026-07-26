@@ -52,12 +52,12 @@ class OpenAiCompatControllerTest {
 
     @Test
     void streamAuFormatOpenAiAvecDone() {
-        when(rag.streamWithUsage(eq("Explique Elog"), isNull()))
+        when(rag.streamWithUsage(eq("Explique fps-suite"), isNull()))
                 .thenReturn(Flux.just(fragment("Bon"), fragment("jour")));
 
         var response = controller.chatCompletions(new OpenAiCompatController.ChatCompletionRequest(
                 "xrag-passerelle",
-                List.of(new OpenAiCompatController.Message("user", "Explique Elog")),
+                List.of(new OpenAiCompatController.Message("user", "Explique fps-suite")),
                 true));
 
         List<String> events = response.getBody().collectList().block();
@@ -70,13 +70,13 @@ class OpenAiCompatControllerTest {
 
     @Test
     void reponseCompleteSansStream() {
-        when(rag.streamWithUsage(eq("Explique Elog"), isNull()))
+        when(rag.streamWithUsage(eq("Explique fps-suite"), isNull()))
                 .thenReturn(Flux.just(fragment("Bon"), fragment("jour")));
 
         var response = controller.chatCompletions(new OpenAiCompatController.ChatCompletionRequest(
                 "xrag-passerelle",
                 List.of(new OpenAiCompatController.Message("system", "tu es concis"),
-                        new OpenAiCompatController.Message("user", "Explique Elog")),
+                        new OpenAiCompatController.Message("user", "Explique fps-suite")),
                 false));
 
         List<String> body = response.getBody().collectList().block();
@@ -89,12 +89,12 @@ class OpenAiCompatControllerTest {
 
     @Test
     void exposeLUsageDeTokensDansLaReponse() {
-        when(rag.streamWithUsage(eq("Explique Elog"), isNull()))
+        when(rag.streamWithUsage(eq("Explique fps-suite"), isNull()))
                 .thenReturn(Flux.just(fragment("Bon"), fragmentWithUsage("jour", 120, 30)));
 
         var response = controller.chatCompletions(new OpenAiCompatController.ChatCompletionRequest(
                 "xrag-passerelle",
-                List.of(new OpenAiCompatController.Message("user", "Explique Elog")),
+                List.of(new OpenAiCompatController.Message("user", "Explique fps-suite")),
                 false));
 
         assertThat(response.getBody().collectList().block().getFirst())

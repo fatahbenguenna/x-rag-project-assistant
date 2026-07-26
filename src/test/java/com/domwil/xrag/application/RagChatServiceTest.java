@@ -43,7 +43,7 @@ class RagChatServiceTest {
 
     private static MergeRequestMeta mr153() {
         return new MergeRequestMeta("gitlab:1:153", "fps-suite", 153,
-                "feat(fps-kds): connexion backend réelle — WebSocket STOMP",
+                "feat(fpskds): connexion backend réelle — WebSocket STOMP",
                 "## Contexte\nPR attitrée au suivi de connexion backend.",
                 "merged", "fatah", "feat/kds", "main",
                 "https://gitlab.example/mr/153", List.of(), List.of(), null, null, null);

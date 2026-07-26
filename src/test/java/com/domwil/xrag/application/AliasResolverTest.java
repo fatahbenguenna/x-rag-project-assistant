@@ -10,38 +10,38 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AliasResolverTest {
 
     private final AliasResolver resolver = new AliasResolver(Map.of(
-            "easyloc", List.of("Easy Loc", "easy-loc", "EASYLOC"),
-            "epsilon", List.of("Epsilon", "epsilon-service")));
+            "fpskds", List.of("FPS KDS", "fps-kds", "FPSKDS"),
+            "fpspos", List.of("fps-pos", "fps-pos-service")));
 
     @Test
     void resolvesAllDeclaredFormsToTheSameCanonicalNode() {
-        for (String form : List.of("Easy Loc", "easy-loc", "EASYLOC", "easyloc", "EasyLoc")) {
-            assertThat(resolver.resolveProjectId(form)).hasValue("project:easyloc");
+        for (String form : List.of("FPS KDS", "fps-kds", "FPSKDS", "fpskds", "FpsKds")) {
+            assertThat(resolver.resolveProjectId(form)).hasValue("project:fpskds");
         }
     }
 
     @Test
     void fallsBackToNormalizedSlugForUnknownProjects() {
         assertThat(resolver.projectIdFor("mystery-svc")).isEqualTo("project:mysterysvc");
-        assertThat(resolver.projectIdFor("epsilon-service")).isEqualTo("project:epsilon");
+        assertThat(resolver.projectIdFor("fps-pos-service")).isEqualTo("project:fpspos");
     }
 
     @Test
     void detectsMentionsInFreeText() {
-        String text = "La comm entre Easy Loc et epsilon-service passe par Kafka. EASYLOC publie.";
+        String text = "La comm entre FPS KDS et fps-pos-service passe par Kafka. fpskds publie.";
         assertThat(resolver.projectsMentionedIn(text))
-                .containsExactlyInAnyOrder("project:easyloc", "project:epsilon");
+                .containsExactlyInAnyOrder("project:fpskds", "project:fpspos");
     }
 
     @Test
     void doesNotMatchInsideWords() {
-        assertThat(resolver.projectsMentionedIn("epsilonesque")).isEmpty();
+        assertThat(resolver.projectsMentionedIn("fps-posesque")).isEmpty();
     }
 
     @Test
     void exposesAliasTableForPersistence() {
         assertThat(resolver.aliasTable())
-                .containsEntry("easyloc", "project:easyloc")
-                .containsEntry("epsilonservice", "project:epsilon");
+                .containsEntry("fpskds", "project:fpskds")
+                .containsEntry("fpsposservice", "project:fpspos");
     }
 }

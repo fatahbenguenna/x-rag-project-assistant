@@ -46,7 +46,7 @@ class NightlyBatchServiceTest {
     void batchCompletNotifieLeRapportAvecSmokeTest() {
         when(jdbc.queryForObject(eq("SELECT 1"), eq(Integer.class))).thenReturn(1);
         when(embeddings.embed(anyString())).thenReturn(new float[]{1f});
-        when(smoke.run()).thenReturn("OK en 12 s — Explique-moi le projet elog");
+        when(smoke.run()).thenReturn("OK en 12 s — Explique-moi le projet fps-suite");
         when(graphQuality.evaluate()).thenReturn(new GraphQualityService.Report(
                 new com.domwil.xrag.domain.model.GraphQualityMetrics(10, 20, 0, 100, 90, java.util.List.of()),
                 java.util.List.of()));
@@ -56,7 +56,7 @@ class NightlyBatchServiceTest {
 
         verify(sync).syncAll(false);
         verify(maintenance).vacuumAnalyze();
-        verify(notifier).info(contains("Batch nocturne terminé"), contains("Explique-moi le projet elog"));
+        verify(notifier).info(contains("Batch nocturne terminé"), contains("Explique-moi le projet fps-suite"));
         verify(notifier, never()).alert(anyString(), anyString());
     }
 

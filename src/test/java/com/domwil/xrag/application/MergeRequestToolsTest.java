@@ -32,7 +32,7 @@ class MergeRequestToolsTest {
 
     @Test
     void getMergeRequestRendLaDescriptionComplete() {
-        when(repository.findByIid(153L)).thenReturn(java.util.Optional.of(mr(153, "feat(fps-kds): connexion")));
+        when(repository.findByIid(153L)).thenReturn(java.util.Optional.of(mr(153, "feat(fpskds): connexion")));
 
         String result = tools.getMergeRequest(153);
 

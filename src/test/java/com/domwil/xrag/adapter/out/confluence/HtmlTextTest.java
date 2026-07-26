@@ -9,19 +9,19 @@ class HtmlTextTest {
     @Test
     void convertsConfluenceStorageFormatToPlainText() {
         String html = """
-                <h1>Easy Loc</h1>
+                <h1>FPS KDS</h1>
                 <p>Service de <strong>location</strong> &amp; facturation.</p>
-                <ul><li>Publie sur le topic orders</li><li>Appelle l&#39;API Epsilon</li></ul>
+                <ul><li>Publie sur le topic orders</li><li>Appelle l&#39;API fps-pos</li></ul>
                 <script>alert("ignore");</script>
                 """;
 
         String text = HtmlText.toText(html);
 
         assertThat(text)
-                .contains("Easy Loc")
+                .contains("FPS KDS")
                 .contains("Service de location & facturation.")
                 .contains("Publie sur le topic orders")
-                .contains("Appelle l'API Epsilon")
+                .contains("Appelle l'API fps-pos")
                 .doesNotContain("<")
                 .doesNotContain("alert");
     }

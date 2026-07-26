@@ -14,20 +14,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TypeScriptRelationExtractorTest {
 
     private final AliasResolver aliases = new AliasResolver(Map.of(
-            "easyloc", List.of("Easy Loc", "easy-loc"),
-            "epsilon", List.of("Epsilon", "epsilon-service")));
+            "fpskds", List.of("FPS KDS", "fps-kds"),
+            "fpspos", List.of("fps-pos", "fps-pos-service")));
     private final TypeScriptRelationExtractor extractor = new TypeScriptRelationExtractor(aliases);
 
     @Test
     void extractsHttpCallsOnEnvironmentUrlsAndLibImports() {
         String ts = """
-                import { EpsilonModel } from '@passerelle/epsilon';
-                import { helper } from '../../libs/easy-loc/src/helper';
+                import { FpsPosModel } from '@passerelle/fps-pos';
+                import { helper } from '../../libs/fps-kds/src/helper';
 
                 export class OrderService {
                   constructor(private http: HttpClient) {}
                   load() {
-                    return this.http.get<Order[]>(`${environment.epsilonUrl}/api/orders`);
+                    return this.http.get<Order[]>(`${environment.fpsPosUrl}/api/orders`);
                   }
                 }
                 """;
@@ -37,9 +37,9 @@ class TypeScriptRelationExtractorTest {
 
         assertThat(result.edges())
                 .contains(
-                        GraphEdge.of("project:frontorders", "project:epsilon", GraphEdge.Types.CALLS_API),
-                        GraphEdge.of("project:frontorders", "project:epsilon", GraphEdge.Types.DEPENDS_ON),
-                        GraphEdge.of("project:frontorders", "project:easyloc", GraphEdge.Types.DEPENDS_ON));
+                        GraphEdge.of("project:frontorders", "project:fpspos", GraphEdge.Types.CALLS_API),
+                        GraphEdge.of("project:frontorders", "project:fpspos", GraphEdge.Types.DEPENDS_ON),
+                        GraphEdge.of("project:frontorders", "project:fpskds", GraphEdge.Types.DEPENDS_ON));
     }
 
     @Test

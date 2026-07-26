@@ -8,10 +8,10 @@ class EntityDetectorTest {
 
     @Test
     void generatesNormalizedNgramsUpToThreeWords() {
-        var terms = EntityDetector.candidateTerms("Comment faire communiquer Easy Loc et Epsilon ?");
+        var terms = EntityDetector.candidateTerms("Comment faire communiquer FPS KDS et fps-pos ?");
 
         assertThat(terms)
-                .contains("easy", "loc", "easyloc", "epsilon", "communiquereasyloc")
+                .contains("fps", "kds", "fpskds", "fpspos", "communiquerfpskds")
                 .doesNotContain("commentfairecommuniquereasy"); // > 3 mots
     }
 

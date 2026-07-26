@@ -15,18 +15,18 @@ class GraphTextSerializerTest {
     void serializesOneRelationPerLineWithNamesAndTypes() {
         var subgraph = new Subgraph(
                 List.of(
-                        GraphNode.of("project:easyloc", "PROJECT", "Easy Loc"),
+                        GraphNode.of("project:fpskds", "PROJECT", "FPS KDS"),
                         GraphNode.of("topic:orders", "TOPIC", "orders"),
-                        GraphNode.of("project:epsilon", "PROJECT", "Epsilon")),
+                        GraphNode.of("project:fps-pos", "PROJECT", "fps-pos")),
                 List.of(
-                        GraphEdge.of("project:easyloc", "topic:orders", "PUBLISHES"),
-                        GraphEdge.of("project:epsilon", "topic:orders", "CONSUMES")));
+                        GraphEdge.of("project:fpskds", "topic:orders", "PUBLISHES"),
+                        GraphEdge.of("project:fps-pos", "topic:orders", "CONSUMES")));
 
         String text = GraphTextSerializer.serialize(subgraph);
 
         assertThat(text).isEqualTo("""
-                Easy Loc [PROJECT] -PUBLISHES-> orders [TOPIC]
-                Epsilon [PROJECT] -CONSUMES-> orders [TOPIC]""");
+                FPS KDS [PROJECT] -PUBLISHES-> orders [TOPIC]
+                fps-pos [PROJECT] -CONSUMES-> orders [TOPIC]""");
     }
 
     @Test

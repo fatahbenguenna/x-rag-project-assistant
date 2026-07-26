@@ -13,11 +13,11 @@ class ModelRouterTest {
 
     @Test
     void questionDescriptiveRouteeVersLeFallback() {
-        assertThat(router.route("Explique-moi le projet Elog en 5 principes").getModel())
+        assertThat(router.route("Explique-moi le projet fps-suite en 5 principes").getModel())
                 .isEqualTo("qwen2.5:3b");
-        assertThat(router.route("Résume la page d'architecture d'Easy Loc").getModel())
+        assertThat(router.route("Résume la page d'architecture d'FPS KDS").getModel())
                 .isEqualTo("qwen2.5:3b");
-        assertThat(router.route("C'est quoi Epsilon ?").getModel())
+        assertThat(router.route("C'est quoi fps-pos ?").getModel())
                 .isEqualTo("qwen2.5:3b");
     }
 
@@ -30,13 +30,13 @@ class ModelRouterTest {
 
     @Test
     void syntheseTransProjetsResteSurLeModelePrincipal() {
-        assertThat(router.route("Explique comment faire communiquer Easy Loc et Epsilon")).isNull();
+        assertThat(router.route("Explique comment faire communiquer FPS KDS et fps-pos")).isNull();
         assertThat(router.route("Avons-nous eu un bug de persistance sur alpha ?")).isNull();
     }
 
     @Test
     void sansFallbackConfigureAucunRoutage() {
-        assertThat(new ModelRouter(null).route("Explique-moi le projet Elog")).isNull();
+        assertThat(new ModelRouter(null).route("Explique-moi le projet fps-suite")).isNull();
         assertThat(new ModelRouter(null).route("Résume la page d'accueil")).isNull();
     }
 }

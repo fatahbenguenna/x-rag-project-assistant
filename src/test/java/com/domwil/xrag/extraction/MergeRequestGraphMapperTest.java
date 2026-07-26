@@ -17,8 +17,8 @@ class MergeRequestGraphMapperTest {
     @Test
     void mapsModifiedFilesAndJiraReferences() {
         var mapper = new MergeRequestGraphMapper(new AliasResolver(Map.of(
-                "easyloc", List.of("Easy Loc", "easy-loc"))));
-        var mr = new MergeRequestMeta("gitlab:42:7", "easy-loc", 7,
+                "fpskds", List.of("FPS KDS", "fps-kds"))));
+        var mr = new MergeRequestMeta("gitlab:42:7", "fps-kds", 7,
                 "PASS-99 corrige la persistance", "Fix du bug PASS-99", "merged",
                 "hassen", "fix/persist", "main", "https://gitlab/mr/7",
                 List.of("bug"), List.of("src/main/java/Order.java"),
@@ -29,8 +29,8 @@ class MergeRequestGraphMapperTest {
 
         assertThat(result.edges())
                 .contains(
-                        GraphEdge.of("mr:gitlab:42:7", "project:easyloc", GraphEdge.Types.REFERENCES),
-                        GraphEdge.of("mr:gitlab:42:7", "class:easy-loc/src/main/java/Order.java", GraphEdge.Types.MODIFIES),
+                        GraphEdge.of("mr:gitlab:42:7", "project:fpskds", GraphEdge.Types.REFERENCES),
+                        GraphEdge.of("mr:gitlab:42:7", "class:fps-kds/src/main/java/Order.java", GraphEdge.Types.MODIFIES),
                         GraphEdge.of("mr:gitlab:42:7", "issue:PASS-99", GraphEdge.Types.REFERENCES));
     }
 }

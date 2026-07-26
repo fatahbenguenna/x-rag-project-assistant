@@ -34,9 +34,9 @@ class GraphQualityServiceTest {
 
     @Test
     void projetsSansRelationStructuranteDetectes() {
-        var report = evaluate(new GraphQualityMetrics(100, 250, 5, 1000, 900, List.of("elog", "epsilon")));
+        var report = evaluate(new GraphQualityMetrics(100, 250, 5, 1000, 900, List.of("fps-suite", "fps-pos")));
 
-        assertThat(report.gaps()).anySatisfy(g -> assertThat(g).contains("elog, epsilon"));
+        assertThat(report.gaps()).anySatisfy(g -> assertThat(g).contains("fps-suite, fps-pos"));
     }
 
     @Test

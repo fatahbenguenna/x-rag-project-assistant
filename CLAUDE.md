@@ -8,7 +8,7 @@ Assistant RAG d'équipe permettant à tout membre d'un projet de poser des quest
 - l'historique des Merge Requests GitLab,
 - (3e source) les issues Jira.
 
-Exemples de questions cibles : "explique-moi le projet Elog en 5 principes", "comment faire communiquer Easy Loc et Epsilon", "avons-nous eu un bug de persistance sur alpha ?", "quelle MR ouverte est la plus vieille ?".
+Exemples de questions cibles : "explique-moi le projet fps-suite en 5 principes", "comment faire communiquer fps-pos et fps-kds", "avons-nous eu un bug de persistance sur alpha ?", "quelle MR ouverte est la plus vieille ?".
 
 **Produit exportable** : toute équipe Confluence/Jira/GitLab doit pouvoir déployer sa propre instance sans toucher au code, uniquement via configuration.
 
@@ -29,7 +29,7 @@ Exemples de questions cibles : "explique-moi le projet Elog en 5 principes", "co
 
 ```sql
 CREATE TABLE graph_nodes (
-  id TEXT PRIMARY KEY,        -- "project:easyloc", "page:12345", "topic:orders"
+  id TEXT PRIMARY KEY,        -- "project:fpskds", "page:12345", "topic:orders"
   type TEXT NOT NULL,         -- PROJECT, PAGE, MR, ISSUE, CLASS, TABLE, TOPIC, ENDPOINT
   name TEXT NOT NULL,
   props JSONB DEFAULT '{}'
@@ -51,7 +51,7 @@ Extraction déterministe :
 - MRs : fichiers touchés (MODIFIES), clés Jira dans titre/description.
 - Jira : issue → projet, liens entre issues.
 
-**Résolution d'entités** : table d'alias configurable ("Easy Loc" / `easy-loc` / `EASYLOC` → id canonique). Critique, sinon graphe fragmenté.
+**Résolution d'entités** : table d'alias configurable ("FPS KDS" / `fps-kds` / `fpskds` → id canonique). Critique, sinon graphe fragmenté.
 
 ## Batch nocturne (cible : terminé ~02:45, ~30-45 min)
 
@@ -84,7 +84,7 @@ sources:
   gitlab: { base-url: ..., group: passerelle, branches: [main, develop] }  # découverte auto des repos du groupe
   jira: { base-url: ..., projects: [PASS, INFRA] }
 aliases:
-  easyloc: ["Easy Loc", "easy-loc", "EASYLOC"]   # -> nœuds project: du graphe
+  fpskds: ["FPS KDS", "fps-kds", "FPSKDS"]   # -> nœuds project: du graphe
 synonyms:
   pos: ["caisse"]                                 # métier<->code pour searchMergeRequests (n'affecte pas le graphe)
 schedule: { nightly: "0 0 2 * * *" }

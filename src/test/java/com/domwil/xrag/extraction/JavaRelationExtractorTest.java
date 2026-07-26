@@ -14,8 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class JavaRelationExtractorTest {
 
     private final AliasResolver aliases = new AliasResolver(Map.of(
-            "easyloc", List.of("Easy Loc", "easy-loc", "EASYLOC"),
-            "epsilon", List.of("Epsilon", "epsilon-service")));
+            "fpskds", List.of("FPS KDS", "fps-kds", "FPSKDS"),
+            "fpspos", List.of("fps-pos", "fps-pos-service")));
     private final JavaRelationExtractor extractor = new JavaRelationExtractor(aliases);
 
     @Test
@@ -27,8 +27,8 @@ class JavaRelationExtractorTest {
                 @Table(name = "rental_orders")
                 public class RentalOrder { private Long id; }
 
-                @FeignClient(name = "epsilon-service")
-                interface EpsilonClient { String fetch(); }
+                @FeignClient(name = "fps-pos-service")
+                interface FpsPosClient { String fetch(); }
 
                 class OrderListener {
                     @KafkaListener(topics = {"orders", "billing"})
@@ -45,16 +45,16 @@ class JavaRelationExtractorTest {
 
         assertThat(result.nodes())
                 .extracting("id")
-                .contains("project:easyloc", "table:rental_orders", "project:epsilon",
+                .contains("project:fpskds", "table:rental_orders", "project:fpspos",
                         "topic:orders", "topic:billing", "topic:orders-events");
         assertThat(result.edges())
                 .contains(
-                        GraphEdge.of("project:easyloc", "table:rental_orders", GraphEdge.Types.SHARES_TABLE),
-                        GraphEdge.of("project:easyloc", "project:epsilon", GraphEdge.Types.CALLS_API),
-                        GraphEdge.of("project:easyloc", "topic:orders", GraphEdge.Types.CONSUMES),
-                        GraphEdge.of("project:easyloc", "topic:billing", GraphEdge.Types.CONSUMES),
-                        GraphEdge.of("project:easyloc", "topic:orders-events", GraphEdge.Types.PUBLISHES));
-        assertThat(result.documentNodeIds()).contains("project:easyloc", "table:rental_orders");
+                        GraphEdge.of("project:fpskds", "table:rental_orders", GraphEdge.Types.SHARES_TABLE),
+                        GraphEdge.of("project:fpskds", "project:fpspos", GraphEdge.Types.CALLS_API),
+                        GraphEdge.of("project:fpskds", "topic:orders", GraphEdge.Types.CONSUMES),
+                        GraphEdge.of("project:fpskds", "topic:billing", GraphEdge.Types.CONSUMES),
+                        GraphEdge.of("project:fpskds", "topic:orders-events", GraphEdge.Types.PUBLISHES));
+        assertThat(result.documentNodeIds()).contains("project:fpskds", "table:rental_orders");
     }
 
     @Test
@@ -72,7 +72,7 @@ class JavaRelationExtractorTest {
     }
 
     private static SourceDocument doc(String content) {
-        return new SourceDocument("gitlab-code", "easy-loc", "easy-loc@main/src/A.java",
+        return new SourceDocument("gitlab-code", "fps-kds", "fps-kds@main/src/A.java",
                 "src/A.java", content, null, "sha", null, Map.of());
     }
 }

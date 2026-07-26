@@ -14,13 +14,13 @@ import java.util.regex.Pattern;
  * Extraction déterministe côté TypeScript/Angular (regex) :
  * <ul>
  *   <li>appels HttpClient sur des URLs d'environnement
- *       ({@code environment.epsilonUrl}) → CALLS_API vers le projet résolu par alias ;</li>
+ *       ({@code environment.fpsPosUrl}) → CALLS_API vers le projet résolu par alias ;</li>
  *   <li>imports inter-libs ({@code from '@scope/lib'} ou {@code libs/xxx}) → DEPENDS_ON.</li>
  * </ul>
  */
 public class TypeScriptRelationExtractor implements RelationExtractor {
 
-    /** environment.epsilonUrl / environment.easylocApiBaseUrl → "epsilon", "easyloc". */
+    /** environment.fpsPosUrl / environment.fpskdsApiBaseUrl → "fpspos", "fpskds". */
     private static final Pattern ENV_URL =
             Pattern.compile("environment\\.(\\w+?)(?:Api)?(?:Base)?(?:Url|Uri|Endpoint)\\b");
     private static final Pattern LIB_IMPORT =
