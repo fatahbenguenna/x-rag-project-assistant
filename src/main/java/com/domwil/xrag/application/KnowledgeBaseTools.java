@@ -29,6 +29,27 @@ public class KnowledgeBaseTools {
     }
 
     @Tool(description = """
+            Consulte le CONTENU COMPLET d'une issue Jira identifiée par sa clé exacte
+            (ex. FPSSUITE-2) : résumé, description entière et commentaires. À utiliser dès
+            qu'une question porte sur une issue précise (« que dit FPSSUITE-2 ? », « qu'a-t-on
+            discuté dans les commentaires de X-42 ? ») — plus fiable qu'une recherche.""")
+    public String getIssue(
+            @ToolParam(description = "Clé exacte de l'issue, ex. FPSSUITE-2") String key) {
+        var pieces = chunks.documentChunks("jira", key == null ? "" : key.trim().toUpperCase(java.util.Locale.ROOT));
+        if (pieces.isEmpty()) {
+            return "Aucune issue indexée avec la clé « " + key + " ».";
+        }
+        var sb = new StringBuilder(pieces.getFirst().citation());
+        if (pieces.getFirst().url() != null) {
+            sb.append(" (").append(pieces.getFirst().url()).append(")");
+        }
+        for (var piece : pieces) {
+            sb.append("\n").append(piece.content());
+        }
+        return sb.toString();
+    }
+
+    @Tool(description = """
             Recherche plein-texte dans toute la base de connaissances indexée de l'équipe
             (documentation Confluence, code, merge requests, tickets Jira). À utiliser quand les
             extraits déjà fournis ne suffisent pas, ou pour retrouver une page, un fichier ou un

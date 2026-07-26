@@ -173,6 +173,20 @@ public class JdbcChunkRepository implements ChunkRepository {
     }
 
     @Override
+    public List<ScoredChunk> documentChunks(String source, String path) {
+        return jdbc.query("""
+                        SELECT id, source, project, path, title, content, url, 1.0 AS score
+                        FROM rag_chunks WHERE source = ? AND path = ?
+                        ORDER BY chunk_index
+                        """,
+                (rs, i) -> new ScoredChunk(
+                        rs.getString("id"), rs.getString("source"), rs.getString("project"),
+                        rs.getString("path"), rs.getString("title"), rs.getString("content"),
+                        rs.getString("url"), rs.getDouble("score")),
+                source, path);
+    }
+
+    @Override
     public List<ScoredChunk> keywordSearch(String query, String project, int limit) {
         // Full-text seul (index GIN rag_chunks_tsv_gin), sans embedding : déterministe et rapide.
         String tsQuery = orTsQuery(query);

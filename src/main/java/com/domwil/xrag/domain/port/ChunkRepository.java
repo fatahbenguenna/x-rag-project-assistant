@@ -68,6 +68,14 @@ public interface ChunkRepository {
                                    String project, int limit, double graphBoost);
 
     /**
+     * Tous les chunks d'un document, dans l'ordre — lookup DÉTERMINISTE par identifiant
+     * exact (clé Jira, path). Alimente les tools de consultation directe : le retrieval
+     * sémantique ne privilégie pas un identifiant précis (échec mesuré sur « commentaires
+     * de FPSSUITE-2 » alors que le chunk existait).
+     */
+    List<ScoredChunk> documentChunks(String source, String path);
+
+    /**
      * Recherche plein-texte déterministe (tsvector français) sur tous les chunks, indépendante
      * de l'embedding. Alimente le tool {@code searchKnowledgeBase} : le LLM reformule la demande
      * en mots-clés et récupère des extraits sourcés (complément au retrieval pré-injecté).

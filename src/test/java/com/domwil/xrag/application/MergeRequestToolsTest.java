@@ -31,6 +31,21 @@ class MergeRequestToolsTest {
     }
 
     @Test
+    void getMergeRequestRendLaDescriptionComplete() {
+        when(repository.findByIid(153L)).thenReturn(java.util.Optional.of(mr(153, "feat(fps-kds): connexion")));
+
+        String result = tools.getMergeRequest(153);
+
+        assertThat(result).contains("!153").contains("Description complète").contains("description");
+    }
+
+    @Test
+    void getMergeRequestInconnueMessageExplicite() {
+        when(repository.findByIid(999L)).thenReturn(java.util.Optional.empty());
+        assertThat(tools.getMergeRequest(999)).contains("Aucune merge request !999");
+    }
+
+    @Test
     void rechercheLesMrsParSujetEtLesFormate() {
         when(repository.search(any(), anyInt()))
                 .thenReturn(List.of(mr(101, "feat: notification caisse vers KDS"),
