@@ -57,8 +57,9 @@ public class LlmConfiguration {
             plus, dis-le en une phrase et propose la piste la plus proche, sans rien inventer.
 
             Pour les questions factuelles sur les merge requests (comptage, tri, la plus ancienne, \
-            par sujet), utilise les tools. Termine toujours par les sources utilisées : leur numéro \
-            et leur référence (page, fichier, MR, issue).""";
+            par sujet), et pour le CONTENU COMPLET d'une issue ou d'une MR désignée par sa clé ou \
+            son numéro (« FPSSUITE-2 », « !153 »), utilise les tools. Termine toujours par les \
+            sources utilisées : leur numéro et leur référence (page, fichier, MR, issue).""";
 
     /**
      * Prompt du client de synthèse (fiches projet, extractions longues) : les documents
@@ -163,12 +164,13 @@ public class LlmConfiguration {
     @Bean
     public RagChatService ragChatService(ChatClient chatClient, EmbeddingModel embeddingModel,
                                          EntityDetector entityDetector, GraphSearchRepository graphSearch,
-                                         ChunkRepository chunks, MergeRequestTools mergeRequestTools,
+                                         ChunkRepository chunks, MergeRequestRepository mergeRequestRepository,
+                                         MergeRequestTools mergeRequestTools,
                                          KnowledgeBaseTools knowledgeBaseTools, ModelRouter modelRouter,
                                          com.domwil.xrag.domain.port.ChunkReranker reranker,
                                          TeamConfig config) {
         return new RagChatService(chatClient, embeddingModel, entityDetector, graphSearch,
-                chunks, mergeRequestTools, knowledgeBaseTools, modelRouter, reranker,
+                chunks, mergeRequestRepository, mergeRequestTools, knowledgeBaseTools, modelRouter, reranker,
                 config.retrieval().chunkLimit(), config.retrieval().chunkExcerptChars());
     }
 

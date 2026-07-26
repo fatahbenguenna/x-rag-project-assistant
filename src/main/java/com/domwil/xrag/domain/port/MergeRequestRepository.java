@@ -31,6 +31,9 @@ public interface MergeRequestRepository {
      */
     List<MergeRequestMeta> search(List<List<String>> concepts, int limit);
 
+    /** Lookup déterministe d'une MR par son numéro (description COMPLÈTE, contrairement à search). */
+    Optional<MergeRequestMeta> findByIid(long iid);
+
     long count(String state);
 
     /** Curseur pour la sync incrémentale (updated_after). */

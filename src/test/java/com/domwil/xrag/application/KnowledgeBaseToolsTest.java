@@ -38,6 +38,24 @@ class KnowledgeBaseToolsTest {
     }
 
     @Test
+    void getIssueRendLeContenuCompletCommentairesInclus() {
+        when(chunks.documentChunks("jira", "FPSSUITE-2")).thenReturn(List.of(
+                chunk("jira", "FPSSUITE-2", "FPSSUITE-2 — fusion",
+                        "résumé et description\n## Commentaires\n- @claude propose", "https://jira/2")));
+
+        String result = tools.getIssue(" fpssuite-2 "); // clé normalisée (trim + upper)
+
+        assertThat(result).contains("issue FPSSUITE-2").contains("## Commentaires")
+                .contains("@claude propose").contains("https://jira/2");
+    }
+
+    @Test
+    void getIssueInconnueMessageExplicite() {
+        when(chunks.documentChunks("jira", "X-999")).thenReturn(List.of());
+        assertThat(tools.getIssue("X-999")).contains("Aucune issue").contains("X-999");
+    }
+
+    @Test
     void messageExpliciteQuandAucunResultat() {
         when(chunks.keywordSearch(any(), any(), anyInt())).thenReturn(List.of());
 

@@ -124,6 +124,13 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
     }
 
     @Override
+    public Optional<MergeRequestMeta> findByIid(long iid) {
+        return jdbc.query("SELECT * FROM merge_requests WHERE iid = ? ORDER BY updated_at DESC LIMIT 1",
+                        ROW_MAPPER, iid)
+                .stream().findFirst();
+    }
+
+    @Override
     public long count(String state) {
         Long count = jdbc.queryForObject(
                 "SELECT count(*) FROM merge_requests WHERE (?::text = 'all' OR state = ?)",

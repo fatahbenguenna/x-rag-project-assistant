@@ -136,6 +136,19 @@ public class MergeRequestTools {
         return Map.copyOf(index);
     }
 
+    @Tool(description = """
+            Consulte le DÉTAIL COMPLET d'une merge request identifiée par son numéro exact
+            (ex. 153 pour !153) : titre, description entière, état, branches, dates. À utiliser
+            dès qu'une question porte sur une MR précise — plus fiable qu'une recherche.""")
+    public String getMergeRequest(
+            @ToolParam(description = "Numéro (iid) exact de la MR, ex. 153") long iid) {
+        return mergeRequests.findByIid(iid)
+                .map(mr -> format(mr) + "\nDescription complète :\n"
+                        + (mr.description() == null || mr.description().isBlank()
+                                ? "(aucune description)" : mr.description()))
+                .orElse("Aucune merge request !"+ iid + " indexée.");
+    }
+
     @Tool(description = "Compte les merge requests GitLab par état (opened, merged, closed ou all).")
     public String countMergeRequests(
             @ToolParam(description = "État : opened, merged, closed ou all") String state) {
