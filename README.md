@@ -20,6 +20,7 @@ Ce README est le point d'entrée ; le reste de la documentation est réparti par
 
 | Document | Rôle | Quand le lire |
 |---|---|---|
+| 🗺️ **[WORKFLOWS.md](WORKFLOWS.md)** | Les flux du système en **schémas Mermaid** : quel modèle répond, pipeline GraphRAG, batch nocturne, résolution d'auth, topologie Ollama, temps réel GitLab | Pour comprendre le système en un coup d'œil |
 | 📘 **[RUNBOOK.md](RUNBOOK.md)** | Guide opérationnel pas à pas (🪟 Windows / 🐧 WSL) : installation, credentials, démarrage, **accès aux services** (dashboard `dashboard.html`, endpoints admin, éval), exploitation courante, dépannage | Mise en service, puis exploitation quotidienne |
 | ✅ **[VALIDATION.md](VALIDATION.md)** | Checklist de mise en service : critères de succès **mesurables** (santé, indexation, qualité du graphe, latences vs cibles, batch nocturne, temps réel GitLab) | Une fois l'onboarding ci-dessous terminé |
 | 🧭 **[CLAUDE.md](CLAUDE.md)** | Contexte projet : décisions d'architecture validées, modèle de graphe, batch nocturne, exportabilité | Avant de contribuer au code |
