@@ -18,11 +18,11 @@ Complémentaire de `README.md` (vue d'ensemble) et `VALIDATION.md` (critères de
 | 1.3 | 🐧 | Vérifier l'outillage : `docker version && docker compose version && git --version && curl --version` |
 | 1.4 | 🪟 | Avoir une session SSO fonctionnelle sur Confluence et Jira (SoftID), et un compte GitLab |
 
-> **Ollama : trois hébergements possibles**, au choix dans `.env` — en **conteneur**
-> (défaut, rien à installer, CPU), **natif Windows** (GPU) ou **WSL** (GPU NVIDIA via CUDA).
-> Voir « Ollama : conteneur, natif Windows, ou WSL — et comment permuter » au §4. En mode
-> conteneur, si l'app Ollama Windows est installée, **quittez-la** (barre des tâches) :
-> sinon port 11434 et RAM en double.
+> **Ollama : trois hébergements possibles**, au choix dans `.env` — voir le tableau et
+> les procédures de permutation au §4. En mode conteneur (défaut), si l'app Ollama
+> Windows est installée, **quittez-la** (barre des tâches) : elle tient le port 11434 et
+> le conteneur `xrag-ollama` ne pourrait pas publier le sien (`docker compose up`
+> échouerait pour ce service), en plus de la RAM en double.
 
 ## 2. Installation (une seule fois) — 🐧
 
@@ -45,38 +45,27 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 | Jira | 🪟 navigateur | Idem — inclure **`seraph.rememberme.cookie`** (validité ~2 semaines) | `JIRA_COOKIE=INGRESSCOOKIE=...; JSESSIONID=...; seraph.rememberme.cookie=...` |
 | Postgres | 🐧 | Choisir un mot de passe | `POSTGRES_PASSWORD=...` |
 
-> Le mode cookie est un mode **dev/validation** : il expire avec la session (voir §8 pour le
-> rafraîchissement). Cible pérenne selon la plateforme, sans autre changement que le `.env` :
-> **Cloud** → OAuth 2.0 client credentials (`*_OAUTH_CLIENT_ID` + `*_OAUTH_CLIENT_SECRET`,
-> recommandé) ou token de compte de service scopé (`*_TOKEN` seul, `*_USER` vide) ; **Data
-> Center** → compte de service basic (`*_USER` + `*_TOKEN`) ou PAT (`*_TOKEN` seul). Les cinq
-> modes sont détaillés dans `.env.example`. Ne jamais coller ces valeurs ailleurs que dans le `.env`.
+> Le mode cookie est un mode **dev/validation** : il expire avec la session (voir §8 pour
+> le rafraîchissement). Pour les modes pérennes (OAuth, scoped, basic, PAT — seul le `.env`
+> change) : README « Authentification Confluence/Jira » et `.env.example`. Ne jamais coller
+> ces valeurs ailleurs que dans le `.env`.
 
 ### Garanties lecture seule (cookies personnels avec droits d'écriture)
 
 L'application **ne peut pas** altérer les données de Confluence, Jira ou GitLab, même avec
-des credentials qui auraient tous les droits :
+des credentials qui auraient tous les droits : connecteurs GET-only + garde-fou structurel
+`ReadOnlyHttpGuard` — le détail de ces deux garanties produit est au README, section
+« Authentification Confluence/Jira ». Durcissements opérationnels recommandés :
 
-1. **Audit du code** : les trois connecteurs n'émettent que des requêtes **GET**
-   (recherche CQL, JQL, arborescences et fichiers git). Le seul POST sortant de
-   l'application est la notification (`NOTIFY_WEBHOOK_URL`), envoyée **sans** les
-   credentials des plateformes. Les tools exposés au LLM (`listMergeRequests`,
-   `searchMergeRequests`, `countMergeRequests`) lisent la base locale — le LLM n'a
-   aucun outil vers les plateformes.
-2. **Garde-fou structurel** (`ReadOnlyHttpGuard`) : un intercepteur HTTP câblé dans les
-   trois connecteurs **rejette toute requête non GET/HEAD avant qu'elle ne parte sur le
-   réseau**. Même un bug ou une régression future ne peut pas produire d'écriture avec
-   vos credentials.
-3. **Durcissements recommandés** :
-   - `chmod 600 .env` (lisible par vous seul) ;
-   - ne **pas** inclure `atlassian.xsrf.token` dans `JIRA_COOKIE` : inutile en lecture,
-     c'est le jeton qui faciliterait des écritures « type navigateur » si les cookies
-     fuitaient ;
-   - GitLab : un PAT aux scopes `read_api` + `read_repository` est incapable d'écrire
-     **par construction** (contrôle côté serveur) ;
-   - les seuls scripts du dépôt qui écrivent sur les plateformes sont ceux du testbed
-     (`testbed/setup-*.sh`) : exécution manuelle uniquement, jamais appelés par
-     l'application — ne les lancez jamais avec un groupe/space/projet réel en paramètre.
+- `chmod 600 .env` (lisible par vous seul) ;
+- ne **pas** inclure `atlassian.xsrf.token` dans `JIRA_COOKIE` : inutile en lecture,
+  c'est le jeton qui faciliterait des écritures « type navigateur » si les cookies
+  fuitaient ;
+- GitLab : un PAT aux scopes `read_api` + `read_repository` est incapable d'écrire
+  **par construction** (contrôle côté serveur) ;
+- les seuls scripts du dépôt qui écrivent sur les plateformes sont ceux du testbed
+  (`testbed/setup-*.sh`) : exécution manuelle uniquement, jamais appelés par
+  l'application — ne les lancez jamais avec un groupe/space/projet réel en paramètre.
 
 ## 4. Démarrer la pile — 🐧
 
@@ -102,6 +91,10 @@ docker compose ps
 # Puis télécharger les modèles (~5 Go, une seule fois). EN MODE CONTENEUR :
 docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
 docker exec xrag-ollama ollama pull bge-m3
+# Si llm.fallback-model est conservé dans team-config.yml (défaut de l'exemple) :
+docker exec xrag-ollama ollama pull qwen2.5:3b
+# — sinon les questions descriptives échoueront (« model not found »), et le préflight
+# §5 ne vérifie pas ce modèle. Alternative : retirer fallback-model de team-config.yml.
 # En mode Ollama natif Windows / WSL : les MÊMES pulls SANS « docker exec xrag-ollama »,
 # directement sur l'hôte (voir la section « Ollama : conteneur, natif Windows, ou WSL »).
 ```
@@ -136,8 +129,9 @@ puis `docker compose up -d` (ajoute/retire le conteneur `ollama` et recrée `rag
 
 > **Open WebUI est optionnel** : le RAG fonctionne entièrement par l'API (`:8080`). L'UI
 > (`http://localhost:3000`) est l'interface type ChatGPT pour les utilisateurs humains,
-> branchée sur l'endpoint `/v1`. On peut l'ajouter à tout moment en relançant la commande
-> avec `--profile ui` — les autres conteneurs ne sont pas touchés.
+> branchée sur l'endpoint `/v1`. On peut l'ajouter à tout moment en ajoutant `ui` à
+> `COMPOSE_PROFILES` dans `.env` puis `docker compose up -d` (même mécanisme que le mode
+> Ollama) — les autres conteneurs ne sont pas touchés.
 
 > **Cookies par source** : `CONFLUENCE_COOKIE` reçoit les cookies du domaine Confluence,
 > `JIRA_COOKIE` ceux du domaine Jira — chaque serveur a son propre `JSESSIONID`, ne pas
@@ -149,9 +143,8 @@ puis `docker compose up -d` (ajoute/retire le conteneur `ollama` et recrée `rag
 ./scripts/check-connections.sh
 ```
 
-Teste Postgres, Ollama (+ modèles), GitLab, Confluence, Jira avec les credentials du `.env`
-et la même logique d'authentification que l'application. **Tout doit être vert** avant
-d'indexer — sinon voir §9.
+Ce qu'il teste : README, onboarding étape 6. **Tout doit être vert** avant d'indexer —
+sinon voir §9. Attention : le modèle `fallback-model` n'est pas vérifié (cf. §4).
 
 ## 6. Indexation initiale — 🐧
 
@@ -159,21 +152,21 @@ d'indexer — sinon voir §9.
 ./bootstrap.sh             # 3 à 6 h selon le volume — lancer en fin de journée
 ```
 
-Suivi pendant l'indexation :
-- **Dashboard visuel** (recommandé) : `http://localhost:8080/dashboard.html` — chunks par
-  source, source en cours, temps écoulé, problèmes rencontrés et dernière sync par source,
-  auto-rafraîchi toutes les 3 s.
-- En ligne de commande : `curl -s localhost:8080/api/admin/status` (compteurs bruts) ou
-  `curl -s localhost:8080/api/admin/indexing-status` (statut détaillé JSON servant le dashboard).
+Suivi pendant l'indexation : dashboard `http://localhost:8080/dashboard.html` (recommandé)
+ou compteurs en CLI — les deux sont décrits dans la table du §7.
 
 Interruptible sans risque : tout est en upsert à clés stables, relancer reprend
 où c'était. Le smoke test s'exécute automatiquement à la fin.
 
 ## 7. Accéder au service
 
+> Les commandes `POST` exigent le header `X-Admin-Token` dès qu'`ADMIN_TOKEN` est
+> configuré (les `GET` restent libres). `$ADMIN_TOKEN` vit dans `.env`, pas dans votre
+> shell : charger d'abord `set -a; . ./.env; set +a` (sinon header vide → 401).
+
 | Quoi | Où | Comment |
 |---|---|---|
-| **Chat (UI)** | 🪟 navigateur | `http://localhost:3000` (si `--profile ui`) — modèle `xrag-<team>` ; localhost est partagé Windows↔WSL, rien à configurer |
+| **Chat (UI)** | 🪟 navigateur | `http://localhost:3000` (si profil `ui` actif) — modèle `xrag-<team>` ; localhost est partagé Windows↔WSL, rien à configurer |
 | Chat (CLI, streamé) | 🐧 | `curl -N -X POST localhost:8080/api/chat -H 'Content-Type: application/json' -d '{"question":"explique-moi le projet X"}'` |
 | Santé | 🪟/🐧 | `http://localhost:8080/actuator/health` → `{"status":"UP"}` |
 | **Dashboard d'indexation** | 🪟 navigateur | `http://localhost:8080/dashboard.html` — monitoring temps quasi-réel (chunks/source, tâche en cours, temps écoulé, problèmes) |
@@ -182,12 +175,19 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Enrichissement LLM du graphe | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/enrich?max=150'` (async, bilan dans les logs) — rattache les docs sans nœud ; ajouter `&sources=confluence,jira` pour topic-enrichir des sources déjà rattachées. Auto dans le batch nocturne si `extractors.llm: true` |
 | Ré-indexer une source | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
 | Batch à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` |
+| Éval du retrieval (recall@k) | 🐧 | `curl -s localhost:8080/api/admin/eval` — rejoue les questions canoniques `eval.cases` de team-config.yml, sans LLM ; rapport aussi dans la notification nocturne |
+| Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) |
 | Latences vs cibles | 🐧 | `./scripts/measure-latency.sh` |
 
 ## 8. Exploitation courante
 
 - **Batch nocturne à 02:00** : automatique **si le poste et WSL tournent à cette heure**.
   Poste éteint la nuit → lancer le rattrapage le matin : `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly`.
+- **Temps réel GitLab (webhooks)** : sans eux, code et MRs ne sont à jour qu'à J-1 (batch).
+  Dans GitLab (groupe → Settings → Webhooks) : URL `http://<hôte>:8080/api/webhooks/gitlab`,
+  événements **push** + **merge request**, *Secret token* = valeur de `GITLAB_WEBHOOK_TOKEN`
+  du `.env` (vérifiée via le header `X-Gitlab-Token` ; **vide = webhook accepté sans
+  authentification**). Critères de bon fonctionnement : VALIDATION.md §6.
 - **Notifications** : renseigner `NOTIFY_WEBHOOK_URL` dans `.env` (webhook Slack/Mattermost/
   Rocket.Chat) — sinon les alertes ne sont que dans les logs.
 - **Rafraîchir les cookies** (mode cookie, au premier 401 / alerte health check) :

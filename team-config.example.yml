@@ -5,7 +5,7 @@
 team: equipe-passerelle
 
 llm:
-  provider: ollama              # ollama (local, confidentiel) | gemini | openai-compatible
+  provider: ollama              # ollama (local, confidentiel) | gemini
   model: qwen2.5:7b-instruct
   fallback-model: qwen2.5:3b    # optionnel : questions descriptives simples
   embedding-model: bge-m3       # toujours local (multilingue FR + code)
