@@ -14,12 +14,25 @@ Exemples :
 **Exportable** : toute équipe Confluence/Jira/GitLab déploie sa propre instance sans
 toucher au code, uniquement via `team-config.yml` + `.env`.
 
+## Documentation
+
+Ce README est le point d'entrée ; le reste de la documentation est réparti par rôle :
+
+| Document | Rôle | Quand le lire |
+|---|---|---|
+| 📘 **[RUNBOOK.md](RUNBOOK.md)** | Guide opérationnel pas à pas (🪟 Windows / 🐧 WSL) : installation, credentials, démarrage, **accès aux services** (dashboard `dashboard.html`, endpoints admin, éval), exploitation courante, dépannage | Mise en service, puis exploitation quotidienne |
+| ✅ **[VALIDATION.md](VALIDATION.md)** | Checklist de mise en service : critères de succès **mesurables** (santé, indexation, qualité du graphe, latences vs cibles, batch nocturne, temps réel GitLab) | Une fois l'onboarding ci-dessous terminé |
+| 🧭 **[CLAUDE.md](CLAUDE.md)** | Contexte projet : décisions d'architecture validées, modèle de graphe, batch nocturne, exportabilité | Avant de contribuer au code |
+| 📚 **[docs/](docs/README.md)** | Connaissance long-terme (revue d'architecture, artefacts BMAD) | Approfondissement |
+
 ## Architecture (résumé)
 
 - **Backend** : Java 21, Spring Boot, Spring AI, architecture hexagonale (connecteurs =
   adapters, pipeline d'ingestion = domaine).
 - **LLM** : Ollama + `qwen2.5:7b-instruct` par défaut (100 % local), commutable vers
-  Gemini / endpoint OpenAI-compatible via profil Spring.
+  Gemini (`llm.provider: gemini` dans `team-config.yml` + profil Spring `gemini`).
+  Fallback optionnel `qwen2.5:3b` pour les questions descriptives simples
+  (`llm.fallback-model`).
 - **Embeddings** : `bge-m3` via Ollama (multilingue FR + code), toujours en local.
 - **Stockage** : PostgreSQL 16 + pgvector. Le graphe de connaissances vit dans Postgres
   (`graph_nodes` / `graph_edges`), requêtes de voisinage en `WITH RECURSIVE`.
@@ -45,65 +58,21 @@ Prérequis : Docker + Docker Compose, ~16 Go RAM libres recommandés (inférence
      et `docker exec xrag-ollama ollama pull bge-m3`.
    - Ollama natif hôte / WSL : sur l'hôte, `ollama pull qwen2.5:7b-instruct` et
      `ollama pull bge-m3`.
+   - Si `llm.fallback-model` est conservé dans `team-config.yml` (défaut de l'exemple),
+     tirer aussi ce modèle (`ollama pull qwen2.5:3b`) — sinon les questions
+     descriptives échouent (modèle absent), le préflight ne le vérifie pas.
 6. **Préflight** : `./scripts/check-connections.sh` — teste Postgres, Ollama (+ modèles),
    GitLab, Confluence et Jira avec les credentials du `.env` et la même logique
    d'authentification que l'application. Tout doit être vert avant d'indexer.
 7. **Indexation initiale** : `./bootstrap.sh` (3 à 6 h la première nuit selon le volume).
 8. **Vérifier** : le smoke test s'exécute en fin de bootstrap ; l'API répond sur
-   `http://localhost:8080`, l'UI (si activée) sur `http://localhost:3000`. Le **dashboard
-   de monitoring de l'indexation** est servi sur `http://localhost:8080/dashboard.html`
-   (chunks par source, tâche en cours, temps écoulé, problèmes rencontrés).
+   `http://localhost:8080`, l'UI (si activée) sur `http://localhost:3000`, le dashboard
+   d'indexation sur `http://localhost:8080/dashboard.html` (détail : RUNBOOK §7).
 
-Mises à jour : `docker compose pull && docker compose up -d` (Liquibase migre au démarrage).
-
-> 📘 Guide opérationnel détaillé (étapes 🪟 Windows / 🐧 WSL, accès aux services,
-> exploitation courante, dépannage) : **[RUNBOOK.md](RUNBOOK.md)**.
-
-### Windows : toute la chaîne s'exécute dans WSL (Ubuntu)
-
-Docker tourne dans WSL — travaillez depuis un terminal **WSL Ubuntu**, jamais depuis
-PowerShell (où `curl` est un alias d'`Invoke-WebRequest` ; à défaut, utiliser `curl.exe`).
-
-```bash
-# 0. Prérequis (une fois) : Docker Desktop avec intégration WSL activée pour Ubuntu,
-#    ou docker-ce natif dans WSL2. Vérifier :
-docker version && docker compose version
-
-# 1. Cloner DANS le système de fichiers WSL (~/), PAS dans /mnt/c
-#    (I/O beaucoup plus lentes sur /mnt/c — critique pour Postgres et les embeddings)
-cd ~ && git clone https://github.com/fatahbenguenna/x-rag-project-assistant.git
-cd x-rag-project-assistant
-
-# 2. Secrets et configuration
-cp .env.example .env && nano .env                          # tokens/cookies
-cp team-config.example.yml team-config.yml && nano team-config.yml
-
-# 3. Démarrer la pile et tirer les modèles (mode conteneur par défaut, cf. .env COMPOSE_PROFILES)
-docker compose up -d
-docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
-docker exec xrag-ollama ollama pull bge-m3
-
-# 4. Préflight : toutes les connexions vertes avant d'indexer
-./scripts/check-connections.sh
-
-# 5. Indexation initiale (3-6 h selon le volume), puis questions
-./bootstrap.sh
-```
-
-Notes WSL :
-
-- **Ollama : rien à installer** — ni sous Windows ni sous WSL : le compose embarque son
-  propre Ollama en conteneur (`xrag-ollama`), avec ses modèles dans un volume Docker.
-  Si l'application Ollama **Windows** tourne déjà, quittez-la pendant l'utilisation de la
-  pile : elle occupe le port 11434 côté Windows (confusion possible en déboguant depuis
-  le navigateur) et consommerait de la RAM en double si un modèle y est chargé.
-- **RAM** : WSL2 se limite par défaut à ~50 % de la RAM. Pour l'inférence CPU du 7B,
-  allouer au moins 20 Go dans `C:\Users\<vous>\.wslconfig` (`[wsl2]` puis `memory=20GB`),
-  puis `wsl --shutdown` pour appliquer.
-- **Accès depuis Windows** : localhost est partagé — API sur `http://localhost:8080`,
-  Open WebUI sur `http://localhost:3000` depuis le navigateur Windows.
-- **Cookies SSO** : copiés depuis DevTools du navigateur Windows vers le `.env` de WSL —
-  c'est du texte, aucune friction Windows/WSL.
+Mises à jour : avec une image versionnée (`RAG_API_IMAGE` renseigné),
+`docker compose pull && docker compose up -d` ; en build local (développement),
+`git pull && docker compose up -d --build`. Liquibase migre au démarrage —
+détail par type de changement : RUNBOOK §10.
 
 ### Authentification Confluence/Jira
 
@@ -128,10 +97,22 @@ Les modes **oauth** et **scoped** découvrent le `cloudId` du tenant automatique
 (Jira) ; pour du self-hosted sous context path (`https://host/confluence`), l'inclure dans
 le `base-url`. GitLab reste en PAT (`GITLAB_TOKEN`).
 
-**Lecture seule garantie** : les connecteurs n'émettent que des GET, et un garde-fou
-structurel (`ReadOnlyHttpGuard`) rejette toute requête d'écriture avant envoi — même des
-credentials personnels avec droits d'écriture ne peuvent pas altérer les plateformes
-(détails : RUNBOOK.md, « Garanties lecture seule »).
+**Lecture seule garantie** — même des credentials personnels avec droits d'écriture ne
+peuvent pas altérer les plateformes :
+
+1. **Audit du code** : les trois connecteurs n'émettent que des requêtes **GET**
+   (recherche CQL, JQL, arborescences et fichiers git). Les seuls POST sortants sont la
+   notification (`NOTIFY_WEBHOOK_URL`, envoyée **sans** les credentials des plateformes)
+   et, en mode oauth, l'obtention du token sur `auth.atlassian.com` (client credentials).
+   Les tools exposés au LLM (`listMergeRequests`, `searchMergeRequests`,
+   `countMergeRequests`, `getMergeRequest`, `getIssue`, `searchKnowledgeBase`) lisent la
+   base Postgres locale — le LLM n'a aucun outil vers les plateformes.
+2. **Garde-fou structurel** (`ReadOnlyHttpGuard`) : un intercepteur HTTP câblé dans les
+   trois connecteurs **rejette toute requête non GET/HEAD avant qu'elle ne parte sur le
+   réseau**. Même un bug futur ne peut pas produire d'écriture avec vos credentials.
+
+Durcissements opérationnels (chmod du `.env`, cookies à exclure, scopes GitLab) :
+RUNBOOK.md, « Garanties lecture seule ».
 
 ## CI et images versionnées
 
@@ -145,12 +126,12 @@ credentials personnels avec droits d'écriture ne peuvent pas altérer les plate
 
 ## Services Docker Compose
 
-| Service      | Rôle                                   | Port  |
-|--------------|----------------------------------------|-------|
-| `ollama`     | LLM + embeddings locaux                | 11434 |
-| `postgres`   | pgvector + graphe + métadonnées        | 5432  |
-| `rag-api`    | API RAG (Spring Boot)                  | 8080  |
-| `open-webui` | UI de chat (optionnel, profil `ui`)    | 3000  |
+| Service      | Rôle                                                                     | Port  |
+|--------------|--------------------------------------------------------------------------|-------|
+| `ollama`     | LLM + embeddings locaux (profil `ollama-docker`, actif par défaut ; absent en mode Ollama natif/WSL) | 11434 |
+| `postgres`   | pgvector + graphe + métadonnées                                          | 5432  |
+| `rag-api`    | API RAG (Spring Boot)                                                    | 8080  |
+| `open-webui` | UI de chat (optionnel, profil `ui`)                                      | 3000  |
 
 ## Performances attendues (CPU, Ryzen 7 / 32 Go)
 
@@ -167,7 +148,10 @@ Confluence reste à J-1.
 ## Développement
 
 ```bash
-mvn spring-boot:run   # nécessite Postgres + Ollama démarrés (docker compose up -d postgres ollama)
+# Nécessite Postgres + Ollama démarrés (docker compose up -d postgres ollama).
+# Exporter POSTGRES_PASSWORD (valeur du .env) — mais PAS POSTGRES_HOST=postgres :
+# depuis l'hôte, l'app attend le défaut localhost.
+export POSTGRES_PASSWORD=... && mvn spring-boot:run
 mvn verify            # build + tests
 ```
 

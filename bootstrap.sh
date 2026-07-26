@@ -3,6 +3,10 @@
 # Peut durer 3 à 6 h la première nuit selon le volume — laisser tourner.
 set -euo pipefail
 
+# Charge le .env (ADMIN_TOKEN notamment) : sans lui, les POST /api/admin/** rendent
+# 401 dès que le token est configuré — même logique que scripts/check-connections.sh.
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
+
 API_URL="${API_URL:-http://localhost:8080}"
 OLLAMA_CONTAINER="${OLLAMA_CONTAINER:-xrag-ollama}"
 CHAT_MODEL="${CHAT_MODEL:-qwen2.5:7b-instruct}"

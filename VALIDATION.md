@@ -8,23 +8,17 @@ cadrage restent théoriques tant que ce runbook n'a pas été déroulé.
 
 ## 1. Démarrage de la pile
 
-```bash
-docker compose up -d
-docker exec xrag-ollama ollama pull qwen2.5:7b-instruct
-docker exec xrag-ollama ollama pull qwen2.5:3b        # fallback descriptif
-docker exec xrag-ollama ollama pull bge-m3
-curl -s http://localhost:8080/actuator/health          # attendu : {"status":"UP"}
-```
+Pile démarrée et modèles tirés — README, onboarding étapes 4-5 (y compris
+`qwen2.5:3b` si `fallback-model` est conservé dans `team-config.yml` : le préflight
+ne vérifie pas ce modèle).
 
-- [ ] Health UP, logs Liquibase sans erreur (`docker logs xrag-api | grep -i liquibase`).
-- [ ] Préflight tout vert : `./scripts/check-connections.sh` (Postgres, Ollama + modèles,
-      GitLab, Confluence, Jira — avec les credentials réels du `.env`).
+- [ ] Health UP : `curl -s http://localhost:8080/actuator/health` → `{"status":"UP"}` ;
+      logs Liquibase sans erreur (`docker logs xrag-api | grep -i liquibase`).
+- [ ] Préflight tout vert : `./scripts/check-connections.sh` (README étape 6).
 
 ## 2. Indexation initiale
 
-```bash
-./bootstrap.sh          # 3-6 h la première nuit selon le volume
-```
+Bootstrap lancé — README étape 7 (3-6 h la première nuit selon le volume).
 
 - [ ] Compteurs en croissance pendant l'indexation : `curl -s localhost:8080/api/admin/status`
 - [ ] À la fin : chunks > 0 pour chaque source configurée (confluence, gitlab-code, jira),
@@ -41,10 +35,12 @@ curl -s http://localhost:8080/api/admin/graph-quality
   - « nœuds orphelins » → compléter la table d'alias (`aliases` du team-config) ;
   - « projets sans relation structurante » → vérifier que le code des projets
     est bien indexé (branches, extensions).
-- [ ] Si les trous persistent après correction des alias/extracteurs :
-      c'est le signal factuel pour ouvrir le chantier « extraction LLM nocturne ».
+- [ ] Si les trous persistent après correction des alias/extracteurs : c'est le signal
+      factuel pour **activer l'enrichissement LLM nocturne** — `extractors.llm: true`
+      dans `team-config.yml`, ou déclenchement manuel `POST /api/admin/enrich`
+      (RUNBOOK §7) — puis re-vérifier `graph-quality`.
 
-## 4. Latences (cadrage validé)
+## 4. Latences (cibles = README « Performances attendues »)
 
 ```bash
 ./scripts/measure-latency.sh                 # API_URL=http://host:8080 pour un poste distant
@@ -56,14 +52,17 @@ curl -s http://localhost:8080/api/admin/graph-quality
 | Résumé projet (fiche pré-calculée) | 15-25 s complet, 1er token ~5 s | ☐ |
 | Synthèse trans-projets A×B | 45-90 s streamé | ☐ |
 
-- [ ] Trois exécutions par type (le premier appel après idle peut payer le
-      chargement du modèle — c'est le rôle du warm-up 07:30 / `OLLAMA_KEEP_ALIVE=24h`).
-- [ ] Si le résumé projet dépasse 25 s : vérifier que les fiches projet existent
-      (`fiche` dans `api/admin/status`, régénérées par le batch, étape 8).
+- [ ] Trois exécutions par type (le premier appel après idle peut payer le chargement
+      du modèle — cf. warm-up/keep-alive, README et RUNBOOK §9).
+- [ ] Si le résumé projet dépasse 25 s : vérifier que les fiches projet existent —
+      clé `chunks.project-sheet` > 0 dans `GET /api/admin/status` (régénérées par le
+      batch, étape 8).
 
 ## 5. Batch nocturne et notifications
 
-- [ ] Déclencher manuellement : `curl -X POST localhost:8080/api/admin/nightly` —
+- [ ] Déclencher manuellement (RUNBOOK §7 — header `X-Admin-Token` requis si
+      `ADMIN_TOKEN` est configuré) :
+      `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` —
       terminé < 45 min, notification de fin reçue (webhook `NOTIFY_WEBHOOK_URL`
       ou logs), rapport smoke test inclus, verdict d'éval graphe inclus.
 - [ ] Couper Postgres puis redéclencher : alerte « batch abandonné » reçue,
@@ -73,16 +72,17 @@ curl -s http://localhost:8080/api/admin/graph-quality
 
 ## 6. Temps réel GitLab
 
-- [ ] Configurer le webhook GitLab (push + merge_request, secret
-      `GITLAB_WEBHOOK_TOKEN`) vers `https://<instance>/api/webhooks/gitlab`.
+Webhook configuré au préalable — procédure : RUNBOOK §8 « Temps réel GitLab ».
+
 - [ ] Pousser un commit sur un repo du groupe : le fichier modifié est
       réinterrogeable dans les ~2 min (question sur le contenu du commit).
 - [ ] Ouvrir/mettre à jour une MR : visible via « quelle est la dernière MR ? ».
 
 ## 7. UI (optionnel)
 
-- [ ] `docker compose --profile ui up -d` → Open WebUI sur `:3000` voit le
-      modèle `xrag-<team>` (endpoint `/v1`) et streame les réponses.
+- [ ] Ajouter `ui` à `COMPOSE_PROFILES` (`.env`) puis `docker compose up -d` →
+      Open WebUI sur `:3000` voit le modèle `xrag-<team>` (endpoint `/v1`) et
+      streame les réponses.
 
 ## 8. Critères d'acceptation finaux
 
