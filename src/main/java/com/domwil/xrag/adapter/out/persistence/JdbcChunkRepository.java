@@ -16,7 +16,8 @@ import java.util.Set;
 /**
  * Recherche hybride sur rag_chunks : candidats par similarité vectorielle
  * (index HNSW), full-text français et rattachement au sous-graphe, puis
- * re-scoring combiné. Poids : vecteur 0.6, full-text 0.25, graphe 0.3.
+ * re-scoring combiné. Poids : vecteur 0.6, full-text 0.25, graphe paramétré
+ * par l'appelant (0.3 sans reranker, 0.1 avec — voir RagChatService).
  */
 @Repository
 public class JdbcChunkRepository implements ChunkRepository {
