@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +38,20 @@ class MergeRequestToolsTest {
         String result = tools.getMergeRequest(153);
 
         assertThat(result).contains("!153").contains("Description complète").contains("description");
+    }
+
+    @Test
+    void uneMrReconstitueeSansNumeroEstAfficheeParSonId() {
+        var reconstructed = new MergeRequestMeta("git:fps-pos:commits:abc1234", "fps-pos", 0, "PASS-7 export",
+                "", "merged", "alice", null, "main", null, List.of(), List.of(),
+                Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-02T00:00:00Z"), null);
+        when(repository.find(any(), any(), anyBoolean(), anyInt())).thenReturn(List.of(reconstructed));
+
+        String result = tools.listMergeRequests("merged", null, null, null);
+
+        assertThat(result).contains("git:fps-pos:commits:abc1234 [merged] PASS-7 export").doesNotContain("!0");
+        assertThat(tools.getMergeRequest(0)).contains("invalide");
+        verify(repository, never()).findByIid(0L);
     }
 
     @Test

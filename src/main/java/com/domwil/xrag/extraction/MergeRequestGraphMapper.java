@@ -10,8 +10,8 @@ import java.util.Map;
 
 /**
  * Relations extraites des Merge Requests : MODIFIES vers les fichiers touchés
- * (nœuds CLASS) et REFERENCES vers les clés Jira du titre/description et le
- * projet porteur.
+ * (nœuds CLASS) et REFERENCES vers les clés Jira du titre/description/branche source
+ * et le projet porteur.
  */
 public class MergeRequestGraphMapper {
 
@@ -35,7 +35,11 @@ public class MergeRequestGraphMapper {
                     GraphNode.Types.CLASS, file);
             result.edge(mrNode, fileNode, GraphEdge.Types.MODIFIES);
         }
-        for (String issueKey : JiraKeys.in(mr.title() + "\n" + mr.description())) {
+        // La branche source porte souvent la clé (feature/PASS-12-…) : clé retrouvée même si
+        // le titre l'omet — d'autant plus précieux quand la MR est reconstituée depuis git.
+        String haystack = mr.title() + "\n" + mr.description() + "\n"
+                + (mr.sourceBranch() == null ? "" : mr.sourceBranch());
+        for (String issueKey : JiraKeys.in(haystack)) {
             GraphNode issue = GraphNode.of("issue:" + issueKey, GraphNode.Types.ISSUE, issueKey);
             result.edge(mrNode, issue, GraphEdge.Types.REFERENCES).linkDocumentTo(issue.id());
         }

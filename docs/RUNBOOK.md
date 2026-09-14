@@ -41,7 +41,7 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 
 | Source | Où | Procédure | Destination `.env` (🐧 `nano .env`) |
 |---|---|---|---|
-| GitLab | 🪟 navigateur | Préférences → *Access Tokens* → scopes `read_api` + `read_repository` | `GITLAB_TOKEN=glpat-...` |
+| GitLab | 🪟 navigateur | Préférences → *Access Tokens* → scopes `read_api` + `read_repository`. **Token interdit sur le poste ?** → sous-section « Alternative sans token GitLab » ci-dessous (`GITLAB_TOKEN` reste vide) | `GITLAB_TOKEN=glpat-...` |
 | Confluence | 🪟 navigateur | Se connecter (SSO), **F12** → Application → Cookies → copier **tous** les cookies du domaine (`confluence_cookie`, `JSESSIONID`, …) | `CONFLUENCE_COOKIE=confluence_cookie=...; JSESSIONID=...` |
 | Jira | 🪟 navigateur | Idem — inclure **`seraph.rememberme.cookie`** (validité ~2 semaines) | `JIRA_COOKIE=INGRESSCOOKIE=...; JSESSIONID=...; seraph.rememberme.cookie=...` |
 | Postgres | 🐧 | Choisir un mot de passe | `POSTGRES_PASSWORD=...` |
@@ -50,6 +50,85 @@ nano team-config.yml       # base-url (context path inclus le cas échéant !), 
 > le rafraîchissement). Pour les modes pérennes (OAuth, scoped, basic, PAT — seul le `.env`
 > change) : README « Authentification Confluence/Jira » et `.env.example`. Ne jamais coller
 > ces valeurs ailleurs que dans le `.env`.
+
+### Alternative sans token GitLab : dépôts git locaux (`sources.git`)
+
+Pour les postes où la politique cyber **interdit le token/session API GitLab** mais où
+`git fetch` fonctionne (Git Credential Manager / SSO côté Windows, ou clé SSH). L'API lit
+alors des **dépôts git locaux** montés en lecture seule dans le conteneur (`/repos:ro`),
+via JGit (pur Java — aucun binaire git, aucun credential dans l'image) : le code est lu
+dans l'object store des branches cibles (sans checkout), les MRs sont **reconstituées
+depuis l'historique** (commits de fusion GitLab « See merge request grp/proj!153 »,
+commits de squash « Titre (grp/proj!153) », séries de commits directs partageant une clé
+Jira, branches distantes non fusionnées = MRs ouvertes présumées). **L'application ne
+fait jamais de `git fetch`** : la fraîcheur de l'index est celle de vos fetch (§8).
+
+**Standard recommandé : miroirs bare dans un dossier dédié du FS WSL** — 🐧
+
+```bash
+# 1. Lister les URLs de clone (une par ligne, commentaires #) — modèle : repos.list.example
+cp repos.list.example repos.list && nano repos.list
+# 2. Créer les miroirs : ~/xrag-repos/<groupe>/<projet>.git (chemin déduit de l'URL),
+#    idempotent (existant = ignoré), gc.autoDetach=false posé sur chaque miroir
+./scripts/git-mirror-init.sh repos.list ~/xrag-repos
+# 3. .env : chemin ABSOLU Linux du dossier (monté par docker-compose sur /repos:ro)
+GIT_REPOS_DIR=/home/<vous>/xrag-repos
+```
+
+Puis dans `team-config.yml`, **remplacer** le bloc `sources.gitlab` par `sources.git`
+(les deux sont exclusifs : l'API refuse de démarrer si les deux sont présents) :
+
+```yaml
+sources:
+  git:
+    root: /repos                    # dossier DANS le conteneur (= GIT_REPOS_DIR monté)
+    repos: []                       # vide = découverte auto (profondeur 4 : root/projet ou
+                                    # root/groupe/projet) ; en prod, lister les sous-chemins
+    branches: [main, develop]       # code indexé + historique fouillé pour les MRs
+    remote: origin                  # refs/remotes/origin/<b> lues en priorité, repli refs/heads/<b>
+    # web-base-url: https://gitlab.example.com   # liens cliquables ; défaut : déduite du remote
+    merge-requests:
+      from-merge-commits: true      # MRs fusionnées (commits de fusion et squash référencés)
+      from-linear-commits: true     # séries de commits directs par clé Jira (fast-forward)
+      from-open-branches: true      # branches non fusionnées = MRs ouvertes présumées
+      # jira-projects: []           # défaut : sources.jira.projects (détection insensible à la casse)
+```
+
+Règles à respecter, chacune ayant une raison technique :
+
+| Règle | Pourquoi |
+|---|---|
+| Dossier **dédié** (`~/xrag-repos`), jamais `/`, `/home`, `/mnt`, `/tmp`… | L'API refuse ces racines au démarrage de la sync : elles exposeraient tout le système de fichiers au conteneur (et au chat) |
+| Dans le **FS WSL ext4**, jamais `/mnt/c` | I/O 9P trop lentes pour parcourir des object stores ; même règle que pour le clone du projet (§2) |
+| **Miroirs bare** (`git clone --mirror`), pas vos clones de travail | Un clone de travail a un worktree possiblement sale et des refs locales en retard ; un `.git` **fichier** (worktree lié, sous-module) pointe vers un chemin hôte invisible dans le conteneur → ignoré avec un WARN |
+| Pas de **symlinks** dans le dossier | Ignorés à la découverte : un lien hôte ne résout pas dans le conteneur, et un lien sortant élargirait le périmètre indexé |
+| Pas de clone **partiel** (`--filter`) ni **shallow** (`--depth`) | Partiel = erreur (JGit ne peut pas récupérer les objets manquants) ; shallow = WARN, historique tronqué, MRs anciennes irrécupérables (`git fetch --unshallow`) |
+| `GIT_REPOS_DIR` **absolu** Linux | Monté tel quel par docker-compose (`${GIT_REPOS_DIR:-./repos}:/repos:ro`) ; un `~` ou un chemin Windows ne résout pas |
+| L'URL du remote `origin` doit être celle de la forge | Le **slug** du projet (résolu par vos `aliases`) est le dernier segment du chemin distant (`grp/sub/proj.git` → `proj`) ; sans remote lisible, repli sur le nom du dossier (WARN). Les URLs remote ne sont jamais loggées (elles peuvent porter un token) |
+
+**Credentials de `git fetch` dans WSL, sans token stocké** — 🐧 :
+
+```bash
+# Réutiliser le coffre Windows / SSO via Git Credential Manager (installé avec Git for Windows)
+git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"
+# — ou une clé SSH (URLs git@… dans repos.list). Proxy d'entreprise, le cas échéant :
+git config --global http.proxy "$PROXY_URL"
+git config --global http.sslCAInfo "$CORPORATE_CA"
+# Test rapide, avant de créer les miroirs :
+git ls-remote --heads <url-du-projet>
+```
+
+**Ce que ce mode ne donne pas** (à connaître avant de choisir) : ni commentaires de
+revue, ni labels, ni approbations, ni MRs fermées sans fusion (invisibles dans git — les
+états sont `merged` ou `opened`, jamais `closed`) ; les MRs ouvertes sont une
+**heuristique** « branche distante non fusionnée » (une branche poussée sans MR apparaît ;
+une branche squash-mergée sans commit de fusion et non supprimée peut rester « ouverte ») ;
+fidélité maximale avec la stratégie GitLab **« merge commit »** (template par défaut),
+partielle en fast-forward — en squash, configurer le *squash commit template*
+`%{title} (%{reference})` + description pour conserver le numéro de MR ; les MRs sans
+numéro sont citées par leur id (`git:<slug>:commits:<sha>`, `git-branch:<slug>:<branche>`)
+et ne se cherchent pas par `!n` ; plus de découverte automatique des projets du groupe :
+`repos.list` est à maintenir ; pas de webhook : fraîcheur = fréquence des fetch (§8).
 
 ### Garanties lecture seule (cookies personnels avec droits d'écriture)
 
@@ -147,6 +226,16 @@ puis `docker compose up -d` (ajoute/retire le conteneur `ollama` et recrée `rag
 Ce qu'il teste : README, onboarding étape 6. **Tout doit être vert** avant d'indexer —
 sinon voir §9. Attention : le modèle `fallback-model` n'est pas vérifié (cf. §4).
 
+**Section « Git local »** (active dès que `sources.git` est présent dans `team-config.yml` ;
+la section GitLab API, elle, ne s'exécute que si `sources.gitlab` l'est) :
+`GIT_REPOS_DIR` défini et absolu, pas sous `/mnt/` (WARN), pas une racine dangereuse ;
+dépôts découverts (même règle que l'API : profondeur 4, bare ou clone) et, pour chacun,
+branches cibles résolues (`refs/remotes/<remote>/<b>` ou `refs/heads/<b>`), miroir avec
+refspec de fetch (`remote.origin.mirror=true` ou `remote.origin.fetch`), ni shallow ni
+clone partiel, `FETCH_HEAD` de moins de 24 h ; si la pile tourne, `docker compose exec -T
+rag-api ls /repos` prouve le montage. Un dépôt sans branche cible ou périmé est un
+symptôme du §9 (« branche absente », « fetch périmé ») avant d'être un échec d'indexation.
+
 ## 6. Indexation initiale — 🐧
 
 ```bash
@@ -175,6 +264,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Qualité du graphe | 🐧 | `curl -s localhost:8080/api/admin/graph-quality` (verdict + trous éventuels) |
 | Enrichissement LLM du graphe | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/enrich?max=150'` (async, bilan dans les logs) — rattache les docs sans nœud ; ajouter `&sources=confluence,jira` pour topic-enrichir des sources déjà rattachées. Auto dans le batch nocturne si `extractors.llm: true` |
 | Ré-indexer une source | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
+| Rafraîchir code + MRs (mode git) | 🐧 | `./scripts/git-fetch-all.sh --sync` — fetch de tous les miroirs de `GIT_REPOS_DIR` puis `POST sync?source=gitlab-code` et `POST sync?source=gitlab-mr` (charge `.env` lui-même : `ADMIN_TOKEN`, `API_URL`). À la main : les deux `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=…'` après un fetch. Détail et planification : §8 |
 | Batch à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` |
 | Éval du retrieval (recall@k) | 🐧 | `curl -s localhost:8080/api/admin/eval` — rejoue les questions canoniques `eval.cases` de team-config.yml, sans LLM ; rapport aussi dans la notification nocturne |
 | Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) |
@@ -189,6 +279,38 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
   événements **push** + **merge request**, *Secret token* = valeur de `GITLAB_WEBHOOK_TOKEN`
   du `.env` (vérifiée via le header `X-Gitlab-Token` ; **vide = webhook accepté sans
   authentification**). Critères de bon fonctionnement : VALIDATION.md §6.
+- **Fraîcheur en mode git local** (`sources.git`) : le webhook n'a pas de sens (GitLab
+  n'est pas joignable, et l'application ne fetch jamais) — c'est **vous** qui rafraîchissez
+  les miroirs. **Une seule commande à planifier** : `scripts/git-fetch-all.sh --sync`
+  (verrou `flock` sur le dossier ; pour chaque dépôt sous `GIT_REPOS_DIR` :
+  `git remote update --prune` (bare) ou `git fetch --all --prune` (clone) sous `timeout 300`,
+  puis `gc --auto` non détaché ; horodatage `.last-fetch` et journal `fetch.log` dans le
+  dossier ; code retour ≠ 0 si un dépôt échoue ; `--sync` charge `.env` puis enchaîne
+  `POST /api/admin/sync?source=gitlab-code` et `?source=gitlab-mr` sur
+  `${API_URL:-http://localhost:8080}` avec `X-Admin-Token`). Les deux syncs sont
+  asynchrones côté API ; le résultat se lit sur le dashboard (`gitlab-code`, `gitlab-mr`).
+  Le connecteur ne ré-embedde que les fichiers dont le blob a changé (récolte complète,
+  version = id de blob) et re-balaie `rescan-days` (30 j) derrière le curseur des MRs : un
+  fetch tardif ne crée pas de trou. Un miroir sans fetch depuis plus de 26 h déclenche un
+  WARN « miroir périmé » dans les logs à chaque sync.
+  Planification (01:15 avant le batch de 02:00, puis toutes les 2 h en journée) :
+  - 🪟 **Windows (Docker dans WSL)** — tâche planifiée qui lance le script dans la distro :
+    ```powershell
+    # Une fois, PowerShell : à l'ouverture de session, puis toutes les 2 h
+    schtasks /Create /TN "xrag-git-fetch" /SC ONLOGON /RI 120 /DU 24:00 /TR "wsl.exe -d Ubuntu -u <vous> -- bash -lc 'cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync'"
+    # + le passage nocturne avant le batch de 02:00 (poste allumé)
+    schtasks /Create /TN "xrag-git-fetch-nuit" /SC DAILY /ST 01:15 /TR "wsl.exe -d Ubuntu -u <vous> -- bash -lc 'cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync'"
+    ```
+    (`cd` dans le dépôt : `--sync` lit `./.env`.) `~/xrag-repos/fetch.log` garde la trace
+    de chaque passage.
+  - 🐧 **Linux natif** — `crontab -e` (5 champs) :
+    ```cron
+    15 1 * * *        cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync
+    0 9-18/2 * * 1-5  cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync
+    ```
+  - **Rattrapage du matin** (poste éteint la nuit) : `./scripts/git-fetch-all.sh --sync`,
+    puis éventuellement le batch complet (`POST /api/admin/nightly`, ci-dessus) pour les
+    fiches projet et le graphe.
 - **Notifications** : renseigner `NOTIFY_WEBHOOK_URL` dans `.env` (webhook Slack/Mattermost/
   Rocket.Chat) — sinon les alertes ne sont que dans les logs.
 - **Rafraîchir les cookies** (mode cookie, au premier 401 / alerte health check) :
@@ -214,6 +336,17 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Compteurs `status` figés à 0 | Connexion source en échec en cours de route | `docker compose logs rag-api`, re-préflight |
 | 1er token > 30 s après une pause | Modèle déchargé de la RAM | `OLLAMA_KEEP_ALIVE=24h` (défaut du compose) + warm-up 07:30 du batch |
 | Pas de batch cette nuit | Poste/WSL éteint à 02:00 | Rattrapage manuel (§8) |
+| Mode git : sync `gitlab-code` en `ERREUR sources.git.root introuvable dans le conteneur` | Volume non monté : `GIT_REPOS_DIR` vide, relatif, ou chemin inexistant côté WSL | `GIT_REPOS_DIR=/home/<vous>/xrag-repos` (absolu) dans `.env`, puis `docker compose up -d rag-api` ; vérifier `docker compose exec -T rag-api ls /repos` |
+| Mode git : `sources.git.root = /… exposerait tout le système de fichiers` | `GIT_REPOS_DIR` pointe une racine refusée (`/`, `/home`, `/root`, `/mnt`, `/mnt/c`, `/tmp`, `/etc`, `/var`, `/usr`, `/opt`, `/app`, `/config`) | Monter un dossier **dédié** aux miroirs (§3) |
+| Mode git : `Aucun dépôt git sous /repos` | Dossier vide, miroirs à plus de 2 niveaux, symlinks (ignorés), ou `sources.git.repos` liste des sous-chemins absents (WARN « absent ou hors de la racine ») | `./scripts/git-mirror-init.sh repos.list ~/xrag-repos` ; respecter `root/projet` ou `root/groupe/projet` ; pas de liens symboliques |
+| Mode git : WARN `aucune des branches [main, develop] n'existe (ni refs/remotes/…, ni refs/heads/…)` — dépôt sans code ni MR | Branche cible absente du dépôt (nommée autrement : `master`, `trunk`), ou clone jamais fetché | Aligner `sources.git.branches` sur les branches réelles, ou `git fetch` du clone ; le préflight §5 le signale dépôt par dépôt |
+| Mode git : `clone PARTIEL (--filter) non supporté` | Miroir créé avec `--filter=blob:none` (promisor) : JGit ne peut pas récupérer les objets manquants | Recloner en miroir **complet** (`git clone --mirror <url>`) |
+| Mode git : WARN `clone SHALLOW (--depth) — historique tronqué` | Miroir créé avec `--depth` : MRs anciennes irrécupérables | `git -C ~/xrag-repos/<grp>/<proj>.git fetch --unshallow` |
+| Mode git : préflight « miroir sans refspec de fetch » / `git remote update` ne ramène rien | Dépôt bare créé sans `--mirror` (pas de `remote.origin.fetch`) : le fetch ne met aucune ref à jour | `git -C <dépôt>.git config remote.origin.fetch '+refs/*:refs/*'` et `remote.origin.mirror true`, ou recloner avec `--mirror` |
+| Mode git : WARN `dernier fetch il y a N h — miroir périmé ?` ; réponses en retard sur GitLab | Plus de 26 h sans fetch (mtime de `FETCH_HEAD`) : tâche planifiée absente/échouée, credentials GCM expirés | `./scripts/git-fetch-all.sh --sync` à la main (voir `fetch.log`), vérifier la planification §8, `git ls-remote --heads <url>` pour tester les credentials |
+| Mode git : sync en `ERREUR … objet manquant … git gc/fetch concurrent ?` | Un `git gc` (ou fetch) a réécrit les packs pendant la lecture ; l'API a réouvert le dépôt une fois puis a abandonné (fail-closed : rien n'est supprimé) | Relancer la sync une fois le fetch terminé ; `git-fetch-all.sh` pose `gc.autoDetach=false` justement pour que le gc finisse avant le `--sync` |
+| Mode git : WARN `fichier .git (worktree lié ou sous-module) dont la cible gitdir n'est pas visible` — dépôt ignoré | Un `git worktree add` / sous-module : le `.git` est un fichier `gitdir: <chemin hôte>` qui n'existe pas dans le conteneur | Monter le dépôt principal, ou (recommandé) un miroir bare (§3) |
+| Mode git : une MR fusionnée sur GitLab reste « ouverte », ou une branche poussée sans MR apparaît comme MR | Heuristique « branche distante non fusionnée » : squash/rebase sans commit de fusion et branche non supprimée, ou branche de travail poussée | Supprimer la branche distante (elle disparaît à la sync suivante, `--prune`) ; ajouter un motif à `open-branches-exclude` ; côté GitLab, stratégie « merge commit » ou squash template avec `%{reference}` (§3) |
 | `curl : option -u inconnue` | Vous êtes dans PowerShell (alias `Invoke-WebRequest`) | Utiliser le terminal 🐧 WSL, ou `curl.exe` |
 
 ## 10. Mise à jour de l'instance — 🐧
@@ -237,3 +370,38 @@ docker compose pull && docker compose up -d    # Liquibase migre au démarrage
 
 Jamais de perte d'index lors d'une mise à jour : le schéma évolue par migrations, les
 données restent dans les volumes.
+
+### Basculer API GitLab ↔ dépôts git locaux
+
+Les deux transports partagent l'identifiant de source `gitlab-code`, les clés de chunk
+(`gitlab-code:<slug>@<branche>/<fichier>`) et la table `merge_requests` : la bascule ne
+duplique **aucun chunk** et conserve graphe et extracteurs. Marche à suivre :
+
+1. `team-config.yml` : remplacer `sources.gitlab` par `sources.git` (ou l'inverse — jamais
+   les deux) ; `.env` : `GIT_REPOS_DIR` (mode git) ou `GITLAB_TOKEN` (mode API) ;
+   `docker compose up -d rag-api`.
+2. Sync du code : la première sync **ré-embedde tous les fichiers une fois** — la version
+   d'un fichier passe du SHA de branche (API) à l'id de blob (git), ou inversement — puis
+   redevient incrémentale. Prévoir l'équivalent d'un bootstrap pour le code
+   (`POST /api/admin/sync?source=gitlab-code`, suivi sur le dashboard).
+3. Sync des MRs : les MRs de l'ancien transport **restent en table** avec leurs ids
+   (`gitlab:<pid>:<iid>` côté API ; `git:<slug>:…` / `git-branch:<slug>:…` côté git) —
+   doublons possibles dans `listMergeRequests` / `countMergeRequests`. Purge manuelle,
+   après la première sync réussie du nouveau transport :
+
+```sql
+-- API -> git : retirer les MRs issues de l'API (table + nœuds/arêtes du graphe)
+DELETE FROM graph_edges WHERE src LIKE 'mr:gitlab:%' OR dst LIKE 'mr:gitlab:%';
+DELETE FROM graph_nodes WHERE id LIKE 'mr:gitlab:%';
+DELETE FROM merge_requests WHERE id LIKE 'gitlab:%';
+
+-- git -> API : retirer les MRs reconstituées depuis git
+DELETE FROM graph_edges WHERE src LIKE 'mr:git:%' OR dst LIKE 'mr:git:%'
+                           OR src LIKE 'mr:git-branch:%' OR dst LIKE 'mr:git-branch:%';
+DELETE FROM graph_nodes WHERE id LIKE 'mr:git:%' OR id LIKE 'mr:git-branch:%';
+DELETE FROM merge_requests WHERE id LIKE 'git:%' OR id LIKE 'git-branch:%';
+```
+
+(`docker compose exec postgres psql -U xrag -d xrag`. Attention aux motifs : `mr:git%`
+sans le `:` engloberait aussi `mr:gitlab:`.) Les fichiers supprimés du dépôt ne sont
+purgés par aucun des deux transports — comportement inchangé.

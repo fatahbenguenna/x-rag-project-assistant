@@ -38,4 +38,12 @@ public interface MergeRequestRepository {
 
     /** Curseur pour la sync incrémentale (updated_after). */
     Optional<Instant> mostRecentUpdate();
+
+    /**
+     * Réconciliation des MRs ouvertes (voir {@code MergeRequestConnector.currentlyOpenIds}) :
+     * supprime les MRs {@code opened} dont l'id n'est pas dans {@code keepIds}.
+     *
+     * @return ids supprimés (pour purger leurs nœuds du graphe)
+     */
+    List<String> deleteOpenedNotIn(Collection<String> keepIds);
 }

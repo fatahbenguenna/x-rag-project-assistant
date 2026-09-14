@@ -13,6 +13,10 @@ target/
 .env
 team-config.yml
 docker-compose.override.yml
+# Mode dépôts git locaux : dossier créé (vide) par Docker quand GIT_REPOS_DIR n'est pas
+# renseigné, et liste d'URLs de dépôts propre au poste (modèle : repos.list.example)
+repos/
+repos.list
 
 *.log
 .DS_Store

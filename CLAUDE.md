@@ -24,6 +24,7 @@ Exemples de questions cibles : "explique-moi le projet fps-suite en 5 principes"
 8. **Streaming obligatoire** sur l'endpoint chat (premier token ~2-5 s en CPU).
 9. **Migrations : Liquibase** (choix explicite de Hassen, PAS Flyway). Changelog maître en **XML** (`db.changelog-master.xml`), changesets DDL en **SQL** (`.sql`). Jamais de YAML/JSON.
 10. **Extraction de relations : déterministe d'abord** (regex, JavaParser, parsing TS). **Extraction LLM nocturne IMPLÉMENTÉE** (`GraphEnrichmentService`) : pour les documents non rattachés ou sans nœud `TOPIC` (surtout hors Java/TS), le LLM extrait des sujets → nœuds `TOPIC` + alias (retrouvables) → rattachement des chunks. Activée par `extractors.llm`, déclenchée quand l'éval `/api/admin/graph-quality` montre < 50 % de chunks rattachés ; plafonnée par nuit. Déclenchement manuel : `POST /api/admin/enrich[?sources=confluence,jira]`.
+11. **Transport du code/MRs commutable** : API GitLab (`sources.gitlab`, token) OU dépôts git locaux (`sources.git` : miroirs du poste montés `GIT_REPOS_DIR:/repos:ro`, lus via JGit, MRs reconstituées depuis l'historique) — exclusifs (`@AssertTrue` au démarrage), même source `gitlab-code`, mêmes clés de chunk, même table MR. L'application ne fait jamais de `git fetch` (aucun credential dans le conteneur) : fraîcheur = fetch du poste (`scripts/git-fetch-all.sh --sync`).
 
 ## Modèle de graphe
 
@@ -57,7 +58,7 @@ Extraction déterministe :
 
 1. 02:00 Health check (Ollama, Postgres, tokens API) — échec = alerte + abandon, l'index de la veille reste servi. Règle : jamais de destruction d'index, upsert only.
 2. Sync Confluence incrémentale (comparaison `version.number`).
-3. Sync code : git fetch + diff SHA indexé→HEAD, re-embedding des seuls fichiers modifiés. Clé de chunk stable `source:path:chunk_index` pour upsert.
+3. Sync code : (API GitLab) git fetch + diff SHA indexé→HEAD, re-embedding des seuls fichiers modifiés — ou (`sources.git`) lecture des miroirs locaux, récolte complète en flux, version = id de blob (fichiers inchangés sautés). Clé de chunk stable `source:path:chunk_index` pour upsert.
 4. Sync MRs (`updated_after`) + upsert table métadonnées.
 5. Extraction relations graphe.
 6. Réconciliation/purge des chunks et nœuds orphelins.
@@ -68,7 +69,7 @@ Extraction déterministe :
 
 > Étape ajoutée (décision 10) : après le VACUUM et avant les fiches projet, si `extractors.llm` est actif **et** que l'éval montre < 50 % de chunks rattachés, **enrichissement LLM du graphe** (nœuds `TOPIC`), plafonné à ~150 docs/nuit.
 
-En journée : webhooks GitLab (push + merge_request events) → upsert temps réel. Confluence reste à J-1.
+En journée : webhooks GitLab (push + merge_request events) → upsert temps réel (mode API) ; en mode git local, `git-fetch-all.sh --sync` planifié (01:15 + toutes les 2 h) → `sync?source=gitlab-code` puis `gitlab-mr`. Confluence reste à J-1.
 
 ## Exportabilité
 
@@ -82,6 +83,7 @@ llm:
 sources:
   confluence: { base-url: ..., spaces: [PASS, ARCHI] }
   gitlab: { base-url: ..., group: passerelle, branches: [main, develop] }  # découverte auto des repos du groupe
+  # git: { root: /repos, branches: [main, develop] }   # alternative à gitlab: sans token (voir RUNBOOK §3)
   jira: { base-url: ..., projects: [PASS, INFRA] }
 aliases:
   fpskds: ["FPS KDS", "fps-kds", "FPSKDS"]   # -> nœuds project: du graphe
@@ -92,7 +94,7 @@ extractors: { java: true, typescript: true, python: false, llm: false }  # llm =
 ```
 
 - Secrets en variables d'environnement (`.env`), jamais dans le YAML. Voir `.env.example` pour le mode Ollama (`OLLAMA_BASE_URL`, `COMPOSE_PROFILES`) et les 5 modes d'auth Atlassian (cookie / basic / bearer / scoped / oauth, bi-plateforme Cloud + Data Center).
-- Interfaces plugin : `SourceConnector` (Confluence/GitLab/Jira) et `RelationExtractor` (Java/TS/...), activées par config. Architecture hexagonale : connecteurs = adapters, pipeline d'ingestion = domaine.
+- Interfaces plugin : `SourceConnector` (Confluence/GitLab API ou git local/Jira) et `RelationExtractor` (Java/TS/...), activées par config. Architecture hexagonale : connecteurs = adapters, pipeline d'ingestion = domaine.
 - Images Docker versionnées sur registry privé (registry self-hosted + Tailscale de Hassen). Les équipes font `docker compose pull && up -d` ; Liquibase migre au démarrage.
 - Onboarding cible < 1 h : clone → `.env` → `team-config.yml` → `docker compose up` → `./bootstrap.sh` (indexation initiale, 3-6 h la première nuit) → smoke test.
 
@@ -129,6 +131,7 @@ extractors: { java: true, typescript: true, python: false, llm: false }  # llm =
 - **Revue d'architecture par panel d'experts** (#36, `docs/revue-architecture-rag-2026-07.md`) : 8 agents `rag-expert` (4 revues dimensionnelles + débat contradictoire LangChain vs Spring AI arbitré). Verdict : **rester sur Spring AI**, reprendre 3 techniques nativement. Quick wins livrés (#37-#39) : canal lexical **OR + ts_rank** (l'AND implicite tuait le rappel : 0 vs 1914 chunks), chunks montrés **en entier** (8×1800, section `retrieval` de team-config), **règle d'ancrage bidirectionnelle** (réfutation sourcée — corrige le « Oui » halluciné ET le hedging), `synthesisChatClient` dédié (fiches débridées ×2,7), **ADMIN_TOKEN** sur les POST admin (PathPattern décodé — bypass %-encodé fermé).
 - **Actions M de la feuille de route** (#40-#42) : **topics durables** (fusion à l'upsert — `sync?full=true` ne détruit plus l'enrichissement ; nightly par document ; GC des topics sans référence) ; **harness d'éval recall@k** (`eval.cases` de team-config, `GET /api/admin/eval`, rapport nocturne — baseline 7/10, misses = rappel pas classement) ; **reranker cross-encoder ONNX in-process** (DJL 0.36 + bge-reranker-v2-m3 int8 en volume, désactivé par défaut : +1 recall@4 et repêchage vivier 14→rang 1 MAIS ~30 s/question sur la cible CPU — activable par config sur infra adaptée ; boost graphe 0,1 avec rerank / 0,3 sans, le 0,3 évinçait des pertinents, prouvé par l'éval).
 - **Graphe sain** (#44, H2 + M2 de la revue) : **dé-hub** — les topics ne pointent plus le nœud PROJECT (degré 853→366) mais leurs documents (707 arêtes topic→page/issue/class, recâblage nocturne idempotent) ; voisinage `WITH RECURSIVE` **déterministe** (ORDER BY profondeur, id) + **barrière anti-hub** (degré > 50 non traversé sauf graine). **Hygiène des topics** — extracteur durci (non-latin rejeté, blocklist de génériques, alias ≥ 4 alphanum), purge nocturne des topics hors latin étendu (⚠️ accents FR admis — une purge ASCII détruirait `topic:sécurité` en boucle), **neutralisation** des génériques df ≥ 40 (nœud gardé en marqueur anti-re-création) + restauration auto-réparatrice des alias légitimes. Calibrage PAR L'ÉVAL : le seuil 10 initial cassait le cas multi-tenant (rang 1→5), détecté et recalibré à 40. Les singletons ne sont pas purgés (valeur de découvrabilité démontrée).
+- **Mode dépôts git locaux** (PR à venir, décision 11) : `sources.git` — miroirs/clones du poste montés `${GIT_REPOS_DIR:-./repos}:/repos:ro`, lus via **JGit 7.8** (pur Java : aucun binaire git ni `git fetch` dans le conteneur), exclusif avec `sources.gitlab`. Code : même source `gitlab-code`, mêmes clés de chunk `slug@branche/fichier` (bascule sans doublon, ré-embedding complet une fois), récolte complète en flux (`streamChangedSince`, rien en RAM) avec **version = id de blob** (inchangés sautés, un fetch tardif ne crée pas de trou) ; slug du projet = dernier segment de l'URL du remote (repli nom de dossier, WARN ; URL jamais loggée) ; racines dangereuses (`/`, `/home`, `/mnt/c`…) et clones partiels refusés, shallow / miroir périmé (> 26 h) / worktree lié invisible = WARN. MRs reconstituées par **3 voies** — commits de fusion (GitLab « See merge request !153 », GitHub, Bitbucket, Azure, git natif + squash référencé `(grp/proj!153)`), séries de commits directs partageant une clé Jira (« synthétiques », 1er commit = id stable), branches distantes non fusionnées (ouvertes présumées, exclusions glob) — ids `git:<slug>:<iid>` / `git:<slug>:merge:<sha>` / `git:<slug>:commits:<sha>` / `git-branch:<slug>:<branche>` (iid 0 = inconnu, affichée par son id ; états `merged`/`opened` seulement) ; fusion develop→main = MR d'intégration sans listing (anti-hub) ; **réconciliation fail-closed** des MRs ouvertes (`currentlyOpenIds` → `deleteOpenedNotIn`, table + nœuds `mr:` — seule exception au « upsert only », jamais sur récolte en échec). Rafraîchissement : `POST /api/admin/sync?source=gitlab-code` puis `?source=gitlab-mr` (webhook GitLab sans objet) ; bascule API↔git = purge SQL manuelle des anciens ids ; scripts `git-mirror-init.sh` (miroirs bare depuis `repos.list`) et `git-fetch-all.sh --sync` (à planifier 01:15 + toutes les 2 h) ; **testbed sans GitLab** (`testbed/setup-git-local.sh`). Limites : pas de commentaires/labels/approbations ni MRs fermées sans merge, plus de découverte auto du groupe (liste d'URLs à maintenir).
 - **Diagnostic assisté d'un expert RAG** (sous-agent ponctuel) : a identifié la troncature `num_ctx` comme vraie cause du hedging, et écarté LangChain4j (aucun gain vs Spring AI 2.0). Un agent réutilisable `rag-expert` n'a pas été installé.
 
 - Auth GitHub : fine-grained PAT, resource owner fatahbenguenna, permissions Administration (write) + Contents (write) + Pull requests (write), expiration courte, révocation après usage.

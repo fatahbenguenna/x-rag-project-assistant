@@ -6,6 +6,7 @@ import com.domwil.xrag.domain.model.GraphEdge;
 import com.domwil.xrag.domain.model.GraphNode;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.RelationExtractor;
+import com.domwil.xrag.domain.port.SourceConnector;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -40,7 +41,7 @@ public class JavaRelationExtractor implements RelationExtractor {
 
     @Override
     public boolean supports(SourceDocument document) {
-        return "gitlab-code".equals(document.source()) && document.path().endsWith(".java");
+        return SourceConnector.CODE_SOURCE.equals(document.source()) && document.path().endsWith(".java");
     }
 
     @Override

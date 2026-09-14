@@ -62,7 +62,7 @@ servi intact ; l'échec de sync d'une seule source n'interrompt pas les autres
 flowchart TD
     START(["02:00 — planifié<br/>(rattrapage : POST /api/admin/nightly, RUNBOOK §7)"]) --> HC{"Health check<br/>Postgres (SELECT 1)<br/>· Ollama (embedding de test)"}
     HC -->|échec| ALERT["Alerte + abandon<br/>(l'index de la veille reste servi)"]
-    HC -->|OK| SYNC["Syncs incrémentales — l'extraction déterministe<br/>des relations (regex, JavaParser, parsing TS)<br/>se fait PAR DOCUMENT, pendant l'ingestion :<br/>Confluence (version.number) · code GitLab<br/>(diff SHA indexé → HEAD) · Jira · MRs en dernier<br/>(updated_after)"]
+    HC -->|OK| SYNC["Syncs incrémentales — l'extraction déterministe<br/>des relations (regex, JavaParser, parsing TS)<br/>se fait PAR DOCUMENT, pendant l'ingestion :<br/>Confluence (version.number) · code : API GitLab<br/>(diff SHA indexé → HEAD) ou dépôts git locaux<br/>(récolte complète, version = id de blob) · Jira ·<br/>MRs en dernier (updated_after ; en mode git :<br/>reconstituées depuis l'historique, − rescan-days)"]
     SYNC --> PURGE["Purge des nœuds orphelins du graphe<br/>(les chunks obsolètes d'un document sont<br/>purgés à l'upsert, pendant la sync)"]
     PURGE --> VACUUM["VACUUM ANALYZE<br/>(index HNSW conservé, pas de rebuild)"]
     VACUUM --> ENRICH{"extractors.llm actif ?"}
@@ -131,3 +131,37 @@ sequenceDiagram
     end
     Note over GL,PG: La nuit — batch 02:00 (schéma 3)<br/>Confluence et Jira restent à J-1
 ```
+
+### Variante — mode dépôts git locaux (`sources.git`, sans token ni webhook)
+
+L'application ne fetch jamais (aucun credential dans le conteneur) : c'est le poste qui
+rafraîchit les miroirs, puis demande la sync. Une seule commande à planifier
+(`scripts/git-fetch-all.sh --sync`, 01:15 + toutes les 2 h — RUNBOOK §8).
+
+```mermaid
+sequenceDiagram
+    participant GL as GitLab (git fetch seulement)
+    participant WS as Poste (WSL) — git-fetch-all.sh --sync
+    participant API as rag-api
+    participant FS as /repos (GIT_REPOS_DIR, :ro)
+    participant PG as Postgres
+    Note over WS,PG: Planifié (schtasks/wsl.exe ou cron) : 01:15 avant le batch, puis toutes les 2 h
+    WS->>GL: git remote update --prune (miroirs bare) · flock, timeout, gc --auto
+    GL-->>WS: refs/objets à jour dans ~/xrag-repos (.last-fetch, fetch.log)
+    WS->>API: POST /api/admin/sync?source=gitlab-code (X-Admin-Token)
+    WS->>API: POST /api/admin/sync?source=gitlab-mr (X-Admin-Token)
+    API-->>WS: 202 Accepted (tâches de fond — suivi : dashboard)
+    API->>FS: JGit : arbres des branches cibles (refs/remotes/origin/<b>, repli refs/heads/<b> — sans checkout)
+    API->>PG: upsert des chunks gitlab-code (version = id de blob : inchangés sautés)
+    API->>FS: JGit : parcours de l'historique (commits de fusion, séries Jira, branches)
+    API->>PG: upsert merge_requests + graphe ; MRs « opened » disparues retirées<br/>(réconciliation, uniquement si TOUS les dépôts ont été lus — fail-closed)
+    Note over WS,PG: La nuit — batch 02:00 (schéma 3) : mêmes lectures, mêmes règles
+```
+
+**Reconstitution des MRs — trois voies cumulables** (`merge-requests.*` de `sources.git`) :
+① les **commits de fusion** (message GitLab « See merge request grp/proj!153 », GitHub,
+Bitbucket, Azure, git natif) et les commits de **squash** portant la référence
+`(grp/proj!153)` → MR fusionnée numérotée ; ② les **séries de commits directs** partageant
+une même clé Jira (fast-forward sans référence) → MR « synthétique » sans numéro ; ③ les
+**branches distantes non fusionnées** → MRs ouvertes présumées, ensemble autoritaire
+réconcilié à chaque sync. États `merged` ou `opened` seulement ; limites : RUNBOOK §3.

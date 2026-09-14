@@ -23,6 +23,14 @@ Bootstrap lancé — README étape 7 (3-6 h la première nuit selon le volume).
 - [ ] Compteurs en croissance pendant l'indexation : `curl -s localhost:8080/api/admin/status`
 - [ ] À la fin : chunks > 0 pour chaque source configurée (confluence, gitlab-code, jira),
       table MRs alimentée.
+- [ ] **Variante mode git local** (`sources.git`, RUNBOOK §3) : chunks `gitlab-code` > 0
+      (même identifiant de source qu'en mode API) ; MRs **reconstituées** présentes —
+      « quelle est la dernière MR ? » cite une MR à l'état `merged` (numérotée `!n` si le
+      commit de fusion porte la référence GitLab) ou `opened` (branche non fusionnée, citée
+      par `git-branch:<slug>:<branche>`) ; dashboard `dashboard.html` : lignes
+      `gitlab-code` et `gitlab-mr` en OK, **aucune** en `ERREUR` (racine introuvable,
+      0 dépôt, clone partiel, objet manquant → RUNBOOK §9) ; logs `rag-api` sans WARN
+      « miroir périmé » ni « aucune des branches … n'existe ».
 
 ## 3. Qualité du graphe (décision d'architecture n°10)
 
@@ -77,6 +85,28 @@ Webhook configuré au préalable — procédure : RUNBOOK §8 « Temps réel Git
 - [ ] Pousser un commit sur un repo du groupe : le fichier modifié est
       réinterrogeable dans les ~2 min (question sur le contenu du commit).
 - [ ] Ouvrir/mettre à jour une MR : visible via « quelle est la dernière MR ? ».
+
+### Variante mode git local (`sources.git`)
+
+Pas de webhook : la fraîcheur vient de `scripts/git-fetch-all.sh --sync` (RUNBOOK §8).
+Planification en place au préalable ; pour la validation, lancer le script à la main.
+
+- [ ] Pousser un commit sur une branche cible d'un projet, puis
+      `./scripts/git-fetch-all.sh --sync` (code de retour 0, `fetch.log` mis à jour) :
+      le fichier modifié est réinterrogeable une fois la sync `gitlab-code` terminée sur
+      le dashboard (seuls les blobs modifiés sont ré-embeddés).
+- [ ] Fusionner une MR **avec commit de fusion** (stratégie « merge commit ») puis
+      fetch + `--sync` : « décris la MR !n » la trouve à l'état `merged`, avec titre,
+      auteur, fichiers touchés et clés Jira des commits ; l'entrée `git-branch:…`
+      correspondante a disparu des ouvertes.
+- [ ] Supprimer une branche distante non fusionnée puis fetch + `--sync` (`--prune`) :
+      elle disparaît de « combien de MRs sont ouvertes ? » (réconciliation des MRs
+      ouvertes — seule suppression autorisée, jamais sur une récolte en erreur).
+- [ ] Contre-épreuve fail-closed : rendre un miroir inexploitable de façon réversible —
+      `git -C ~/xrag-repos/<grp>/<proj>.git config extensions.partialclone true` (l'API
+      refuse les clones partiels) — puis `POST sync?source=gitlab-mr` : `gitlab-mr` passe
+      en `ERREUR … clone PARTIEL` sur le dashboard et **aucune** MR ouverte n'est retirée ;
+      `git -C … config --unset extensions.partialclone`, re-sync → OK.
 
 ## 7. UI (optionnel)
 

@@ -24,12 +24,51 @@ sources:
     #   Data Center : https://confluence.interne.example
     base-url: https://confluence.example.com
     spaces: [PASS, ARCHI]
+  # Code + MRs par l'API GitLab (token GITLAB_TOKEN dans .env) — exclusif avec git: ci-dessous
+  # (un seul des deux blocs, sinon refus au démarrage).
   gitlab:
     # base-url = racine de l'instance, SANS le chemin du groupe.
     #   SaaS : https://gitlab.com      Self-managed : https://gitlab.interne.example
     base-url: https://gitlab.example.com
     group: passerelle           # découverte automatique des repos du groupe
     branches: [main, develop]
+  # ALTERNATIVE sans API GitLab (politique cyber interdisant le token, poste hors réseau) :
+  # dépôts git LOCAUX du poste montés en lecture seule dans le conteneur (GIT_REPOS_DIR dans
+  # .env -> /repos), lus via JGit. Code + MRs RECONSTITUÉES depuis l'historique (clés Jira des
+  # commits comprises), aucun appel API. L'application ne fait JAMAIS de git fetch : la
+  # fraîcheur est celle des fetch du poste (scripts/git-fetch-all.sh --sync). Même source
+  # « gitlab-code » et mêmes clés de chunk que l'API : basculer ne duplique aucun chunk
+  # (ré-embedding complet UNE fois, la version passe du SHA de branche à l'id de blob).
+  # Le project de chaque dépôt = dernier segment de l'URL du remote (sans .git) : à déclarer
+  # dans aliases: comme en mode API. Limites : pas de commentaires de revue, labels,
+  # approbations ni MRs fermées sans merge ; MRs ouvertes = branches distantes non fusionnées.
+  # Activer : supprimer le bloc gitlab: ci-dessus et décommenter celui-ci. Procédure : docs/RUNBOOK.md §3.
+  # git:
+  #   root: /repos                    # dossier DANS le conteneur (montage ${GIT_REPOS_DIR:-./repos}:/repos:ro) ;
+  #                                   # /, /home, /mnt, /mnt/c, /tmp... refusés (exposeraient tout le FS)
+  #   repos: []                       # sous-chemins relatifs à root (recommandé en prod : périmètre explicite) ;
+  #                                   # vide = découverte auto profondeur 4 (root/projet … root/groupe/sous-groupe/projet),
+  #                                   # clones de travail (.git) ou dépôts bare (projet.git)
+  #   branches: [main, develop]       # branches cibles : code indexé + historique fouillé pour les MRs
+  #   remote: origin                  # refs/remotes/<remote>/<branche> lues en priorité (fraîches après
+  #                                   # fetch, sans checkout), repli refs/heads/<branche> (dépôt bare/mirror)
+  #   # web-base-url: https://gitlab.example.com   # OPTIONNEL : origine web des liens (blob, MR) ;
+  #                                                # défaut : déduite de l'URL du remote
+  #   max-file-kb: 512                # fichiers plus gros ignorés (binaires détectés par octet nul aussi)
+  #   merge-requests:
+  #     from-merge-commits: true      # MRs fusionnées depuis les commits de fusion (GitLab « See merge
+  #                                   # request grp/proj!153 », GitHub, Bitbucket, Azure, git natif)
+  #                                   # + commits de SQUASH portant « Titre (grp/proj!153) » = MR numérotée
+  #     from-linear-commits: true     # séries contiguës de commits directs partageant une clé Jira = MR
+  #                                   # « synthétique » (fast-forward sans référence) ; sans clé = ignoré
+  #     from-open-branches: true      # branches distantes non fusionnées = MRs OUVERTES présumées (ensemble
+  #                                   # autoritaire : celles qui disparaissent sont retirées à chaque sync)
+  #     open-branches-exclude: ["release/*", "renovate/*", "dependabot/*", "revert-*", "cherry-pick-*"]   # défaut
+  #     jira-projects: []             # défaut : sources.jira.projects -> détection insensible à la casse
+  #                                   # (pass-12) sans faux positif (SHA-256) ; vide et sans Jira = regex majuscule
+  #     rescan-days: 30               # fenêtre re-balayée au-delà du curseur updated_after (fetch tardif) — upsert idempotent
+  #     max-changed-files: 500        # plafond des fichiers touchés retenus par MR (arêtes MODIFIES)
+  #     max-commits-listed: 50        # commits listés dans la description reconstituée
   jira:
     # base-url = racine du site, SANS /jira ni /wiki.
     #   Cloud       : https://votre-org.atlassian.net

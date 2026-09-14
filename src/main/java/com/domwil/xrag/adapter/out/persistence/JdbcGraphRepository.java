@@ -63,6 +63,17 @@ public class JdbcGraphRepository implements GraphRepository {
                         .toList());
     }
 
+    @Override
+    public void deleteNodes(Collection<String> nodeIds) {
+        if (nodeIds.isEmpty()) {
+            return;
+        }
+        String ids = PgArrays.textArray(nodeIds);
+        jdbc.update("DELETE FROM graph_edges WHERE src = ANY(?::text[]) OR dst = ANY(?::text[])", ids, ids);
+        jdbc.update("DELETE FROM entity_aliases WHERE node_id = ANY(?::text[])", ids);
+        jdbc.update("DELETE FROM graph_nodes WHERE id = ANY(?::text[])", ids);
+    }
+
     private String toJson(Map<String, Object> props) {
         try {
             return json.writeValueAsString(props);

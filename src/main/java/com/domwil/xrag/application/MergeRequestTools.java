@@ -142,6 +142,9 @@ public class MergeRequestTools {
             dès qu'une question porte sur une MR précise — plus fiable qu'une recherche.""")
     public String getMergeRequest(
             @ToolParam(description = "Numéro (iid) exact de la MR, ex. 153") long iid) {
+        if (iid <= 0) {
+            return "Numéro de MR invalide : utiliser searchMergeRequests pour une MR sans numéro.";
+        }
         return mergeRequests.findByIid(iid)
                 .map(mr -> format(mr) + "\nDescription complète :\n"
                         + (mr.description() == null || mr.description().isBlank()
@@ -160,8 +163,9 @@ public class MergeRequestTools {
     }
 
     private static String format(MergeRequestMeta mr) {
-        return "!%d [%s] %s — projet %s, par %s, créée le %s, maj le %s%s".formatted(
-                mr.iid(), mr.state(), mr.title(), mr.project(),
+        // iid 0 = MR reconstituée depuis l'historique git sans numéro de forge : on montre son id.
+        return "%s [%s] %s — projet %s, par %s, créée le %s, maj le %s%s".formatted(
+                mr.reference(), mr.state(), mr.title(), mr.project(),
                 mr.author() == null ? "?" : mr.author(),
                 mr.createdAt(), mr.updatedAt(),
                 mr.webUrl() == null ? "" : " — " + mr.webUrl());

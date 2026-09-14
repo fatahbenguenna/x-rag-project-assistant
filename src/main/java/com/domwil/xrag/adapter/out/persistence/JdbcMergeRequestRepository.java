@@ -125,7 +125,8 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
 
     @Override
     public Optional<MergeRequestMeta> findByIid(long iid) {
-        return jdbc.query("SELECT * FROM merge_requests WHERE iid = ? ORDER BY updated_at DESC LIMIT 1",
+        // iid > 0 : les MRs reconstituées sans numéro de forge (iid 0) ne sont jamais « !0 »
+        return jdbc.query("SELECT * FROM merge_requests WHERE iid = ? AND iid > 0 ORDER BY updated_at DESC LIMIT 1",
                         ROW_MAPPER, iid)
                 .stream().findFirst();
     }
@@ -143,6 +144,15 @@ public class JdbcMergeRequestRepository implements MergeRequestRepository {
         return Optional.ofNullable(jdbc.queryForObject(
                         "SELECT max(updated_at) FROM merge_requests", Timestamp.class))
                 .map(Timestamp::toInstant);
+    }
+
+    @Override
+    public List<String> deleteOpenedNotIn(Collection<String> keepIds) {
+        return jdbc.queryForList("""
+                DELETE FROM merge_requests
+                WHERE state = 'opened' AND NOT (id = ANY(?::text[]))
+                RETURNING id
+                """, String.class, PgArrays.textArray(keepIds));
     }
 
     private static Timestamp toTimestamp(Instant instant) {

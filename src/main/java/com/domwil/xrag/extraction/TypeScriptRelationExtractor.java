@@ -6,6 +6,7 @@ import com.domwil.xrag.domain.model.GraphEdge;
 import com.domwil.xrag.domain.model.GraphNode;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.RelationExtractor;
+import com.domwil.xrag.domain.port.SourceConnector;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,7 +35,7 @@ public class TypeScriptRelationExtractor implements RelationExtractor {
 
     @Override
     public boolean supports(SourceDocument document) {
-        return "gitlab-code".equals(document.source()) && document.path().endsWith(".ts");
+        return SourceConnector.CODE_SOURCE.equals(document.source()) && document.path().endsWith(".ts");
     }
 
     @Override

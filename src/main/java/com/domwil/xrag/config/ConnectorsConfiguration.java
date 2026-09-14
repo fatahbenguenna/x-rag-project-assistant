@@ -6,9 +6,11 @@ import com.domwil.xrag.adapter.out.atlassian.AtlassianConnectionFactory;
 import com.domwil.xrag.adapter.out.atlassian.AtlassianProduct;
 import com.domwil.xrag.adapter.out.atlassian.SourceCredentials;
 import com.domwil.xrag.adapter.out.confluence.ConfluenceConnector;
+import com.domwil.xrag.adapter.out.git.LocalGitConnector;
 import com.domwil.xrag.adapter.out.gitlab.GitLabConnector;
 import com.domwil.xrag.adapter.out.jira.JiraConnector;
 import com.domwil.xrag.domain.port.ConnectorRegistry;
+import com.domwil.xrag.domain.port.MergeRequestConnector;
 import com.domwil.xrag.domain.port.SourceConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +41,7 @@ public class ConnectorsConfiguration {
     public ConnectorRegistry connectorRegistry(TeamConfig config, Environment env) {
         var sources = config.sources();
         var documentConnectors = new ArrayList<SourceConnector>();
-        Optional<GitLabConnector> gitlab = Optional.empty();
+        Optional<MergeRequestConnector> mergeRequests = Optional.empty();
 
         if (sources.confluence() != null) {
             var connection = atlassianConnection(env, "CONFLUENCE",
@@ -48,9 +50,18 @@ public class ConnectorsConfiguration {
             documentConnectors.add(new ConfluenceConnector(sources.confluence(), connection));
         }
         if (sources.gitlab() != null) {
-            gitlab = Optional.of(new GitLabConnector(
-                    sources.gitlab(), env.getProperty("GITLAB_TOKEN", "")));
-            documentConnectors.add(gitlab.get());
+            var gitlab = new GitLabConnector(sources.gitlab(), env.getProperty("GITLAB_TOKEN", ""));
+            documentConnectors.add(gitlab);
+            mergeRequests = Optional.of(gitlab);
+        }
+        if (sources.git() != null) {
+            // Mode sans API : clones git du poste montés en volume, MRs reconstituées depuis l'historique.
+            var git = new LocalGitConnector(sources.git(),
+                    sources.jira() == null ? java.util.List.of() : sources.jira().projects());
+            log.info("Code et MRs : dépôts git locaux sous {} (branches {}, remote {}) — aucun appel API GitLab",
+                    sources.git().root(), sources.git().branches(), sources.git().remote());
+            documentConnectors.add(git);
+            mergeRequests = Optional.of(git);
         }
         if (sources.jira() != null) {
             var connection = atlassianConnection(env, "JIRA",
@@ -61,7 +72,7 @@ public class ConnectorsConfiguration {
 
         log.info("Connecteurs actifs : {}",
                 documentConnectors.stream().map(SourceConnector::source).toList());
-        return new ConnectorRegistry(documentConnectors, gitlab.map(g -> g));
+        return new ConnectorRegistry(documentConnectors, mergeRequests);
     }
 
     private AtlassianConnection atlassianConnection(Environment env, String prefix,

@@ -39,7 +39,7 @@ public class RagChatService {
             "\\b([A-Z][A-Z0-9]+-\\d+)\\b", java.util.regex.Pattern.CASE_INSENSITIVE);
     /** Numéro de MR cité dans la question (!153, « MR 153 », « merge request 153 »). */
     static final java.util.regex.Pattern MR_IID = java.util.regex.Pattern.compile(
-            "(?:!|\\b(?:mr|merge[ -]request)\\s*[!#]?)(\\d{1,6})\\b", java.util.regex.Pattern.CASE_INSENSITIVE);
+            "(?:!|\\b(?:mr|merge[ -]request)\\s*[!#]?)([1-9]\\d{0,5})\\b", java.util.regex.Pattern.CASE_INSENSITIVE);
 
     private static final String USER_TEMPLATE = """
             Contexte issu du graphe de connaissances de l'équipe (relations extraites du code, \
@@ -222,11 +222,12 @@ public class RagChatService {
 
     /** La MR comme source citée : titre + description complète, format aligné sur les chunks. */
     private static ScoredChunk mergeRequestChunk(MergeRequestMeta mr) {
-        String content = "!" + mr.iid() + " [" + mr.state() + "] " + mr.title() + "\n"
+        String content = mr.reference() + " [" + mr.state() + "] " + mr.title() + "\n"
                 + (mr.description() == null || mr.description().isBlank()
                         ? "(aucune description)" : mr.description());
+        // findByIid garantit iid > 0 : le numéro identifie la référence sans ambiguïté
         return new ScoredChunk("mr-exact-" + mr.iid(), "gitlab-mr", mr.project(),
-                "!" + mr.iid(), mr.title(), content, mr.webUrl(), 1.0);
+                mr.reference(), mr.title(), content, mr.webUrl(), 1.0);
     }
 
     String formatChunks(List<ScoredChunk> retrieved, int exactCount) {

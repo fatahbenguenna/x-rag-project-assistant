@@ -1,6 +1,7 @@
 package com.domwil.xrag.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -62,11 +63,23 @@ public record TeamConfig(
         }
     }
 
+    /**
+     * Le code et les MRs viennent soit de l'API GitLab ({@code gitlab}), soit de dépôts git
+     * LOCAUX montés en volume ({@code git}, sans token : politique cyber interdisant l'API,
+     * poste hors réseau…). Les deux sont exclusifs : mêmes clés de chunk, même table MR.
+     */
     public record Sources(
             @Valid Confluence confluence,
             @Valid Gitlab gitlab,
+            @Valid Git git,
             @Valid Jira jira
     ) {
+        /** Déclaratif (pas d'exception au binding) : l'erreur sort dans le rapport de validation unique. */
+        @AssertTrue(message = "sources.gitlab (API) et sources.git (dépôts locaux) sont exclusifs : "
+                + "ne garder qu'un seul mode pour le code et les MRs")
+        public boolean isSingleCodeSource() {
+            return gitlab == null || git == null;
+        }
     }
 
     public record Confluence(@NotBlank String baseUrl, @NotEmpty List<String> spaces) {
@@ -79,6 +92,86 @@ public record TeamConfig(
     }
 
     public record Jira(@NotBlank String baseUrl, @NotEmpty List<String> projects) {
+    }
+
+    /**
+     * Dépôts git LOCAUX (mode sans API GitLab) : lus en place via JGit, jamais fetchés par
+     * l'application — la fraîcheur est celle des {@code git fetch} du poste (scripts/git-fetch-all.sh).
+     *
+     * @param root          dossier (dans le conteneur) contenant les clones — monté par
+     *                      {@code GIT_REPOS_DIR:/repos:ro} dans docker-compose
+     * @param repos         sous-chemins explicites relatifs à {@code root} ; vide = découverte
+     *                      automatique (profondeur 4 : {@code root/projet} … {@code root/grp/sous-grp/…/projet},
+     *                      clones de travail ou dépôts bare)
+     * @param branches      branches cibles : code indexé ET historique fouillé pour les MRs
+     * @param remote        remote dont les refs de suivi ({@code refs/remotes/<remote>/<branche>})
+     *                      sont lues en priorité — les plus fraîches après un fetch, sans checkout ;
+     *                      repli sur {@code refs/heads/<branche>} (dépôt bare/mirror)
+     * @param webBaseUrl    optionnel : origine web de la forge pour les liens cliquables (blob, MR),
+     *                      ex. {@code https://gitlab.example.com} ; défaut : déduite de l'URL du
+     *                      remote ({@code git@hote:grp/proj.git} → {@code https://hote})
+     * @param maxFileKb     fichiers plus gros ignorés (vendored, minifiés, fixtures)
+     * @param mergeRequests réglages de la reconstitution des MRs depuis l'historique
+     */
+    public record Git(@NotBlank String root, List<String> repos, List<String> branches, String remote,
+                      String webBaseUrl, @Min(1) Integer maxFileKb, @Valid GitMergeRequests mergeRequests) {
+        public Git {
+            repos = repos == null ? List.of() : List.copyOf(repos);
+            branches = branches == null || branches.isEmpty() ? List.of("main") : List.copyOf(branches);
+            remote = remote == null || remote.isBlank() ? "origin" : remote.strip();
+            webBaseUrl = webBaseUrl == null || webBaseUrl.isBlank() ? null : stripTrailingSlash(webBaseUrl.strip());
+            maxFileKb = maxFileKb == null ? 512 : maxFileKb;
+            mergeRequests = mergeRequests == null
+                    ? new GitMergeRequests(null, null, null, null, null, null, null, null) : mergeRequests;
+        }
+
+        private static String stripTrailingSlash(String url) {
+            return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        }
+    }
+
+    /**
+     * Reconstitution des MRs depuis l'historique git (aucune API) — trois voies cumulables :
+     *
+     * @param fromMergeCommits    MRs FUSIONNÉES retrouvées dans les commits de fusion (GitLab
+     *                            « See merge request !153 », GitHub, Bitbucket, Azure, git natif) —
+     *                            numéro, titre, branches, fichiers, auteur, dates ; un commit de
+     *                            squash portant la référence {@code (groupe/projet!153)} compte aussi
+     * @param fromLinearCommits   MRs « synthétiques » : séries contiguës de commits directs partageant
+     *                            la même clé Jira (fast-forward / squash sans référence) ; les commits
+     *                            sans clé Jira sont ignorés
+     * @param fromOpenBranches    branches distantes non fusionnées = MRs OUVERTES (heuristique : une
+     *                            branche poussée n'a pas forcément de MR) ; l'ensemble est autoritaire —
+     *                            celles qui disparaissent (fusionnées, supprimées) sont retirées
+     * @param openBranchesExclude motifs glob de branches jamais considérées comme MR ouverte
+     *                            (branches longues, bots)
+     * @param jiraProjects        clés de projets Jira attendues dans les commits (défaut :
+     *                            {@code sources.jira.projects}) — permet la détection insensible à la
+     *                            casse ({@code pass-12}) et écarte les faux positifs ({@code SHA-256}) ;
+     *                            vide et sans Jira configuré = regex générique majuscule
+     * @param rescanDays          fenêtre re-balayée au-delà du curseur {@code updated_after} : un
+     *                            fetch tardif ramène des fusions déjà anciennes (upsert idempotent)
+     * @param maxChangedFiles     plafond des fichiers touchés retenus par MR (arêtes MODIFIES)
+     * @param maxCommitsListed    commits listés dans la description reconstituée
+     */
+    public record GitMergeRequests(Boolean fromMergeCommits, Boolean fromLinearCommits, Boolean fromOpenBranches,
+                                   List<String> openBranchesExclude, List<String> jiraProjects,
+                                   @Min(0) Integer rescanDays, @Min(1) Integer maxChangedFiles,
+                                   @Min(1) Integer maxCommitsListed) {
+        public static final List<String> DEFAULT_OPEN_BRANCHES_EXCLUDE =
+                List.of("release/*", "renovate/*", "dependabot/*", "revert-*", "cherry-pick-*");
+
+        public GitMergeRequests {
+            fromMergeCommits = fromMergeCommits == null || fromMergeCommits;
+            fromLinearCommits = fromLinearCommits == null || fromLinearCommits;
+            fromOpenBranches = fromOpenBranches == null || fromOpenBranches;
+            openBranchesExclude = openBranchesExclude == null
+                    ? DEFAULT_OPEN_BRANCHES_EXCLUDE : List.copyOf(openBranchesExclude);
+            jiraProjects = jiraProjects == null ? List.of() : List.copyOf(jiraProjects);
+            rescanDays = rescanDays == null ? 30 : rescanDays;
+            maxChangedFiles = maxChangedFiles == null ? 500 : maxChangedFiles;
+            maxCommitsListed = maxCommitsListed == null ? 50 : maxCommitsListed;
+        }
     }
 
     /**

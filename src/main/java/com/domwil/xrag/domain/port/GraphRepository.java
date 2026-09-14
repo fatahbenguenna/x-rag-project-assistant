@@ -22,4 +22,11 @@ public interface GraphRepository {
 
     /** alias normalisé -> id de nœud canonique. */
     void upsertAliases(Map<String, String> aliasToNodeId);
+
+    /**
+     * Supprime des nœuds (arêtes et alias compris). Réservé à la réconciliation d'entités
+     * dont la source de vérité a disparu (ex. MR « branche ouverte » fusionnée) — l'index
+     * documentaire n'est jamais détruit par ce chemin.
+     */
+    void deleteNodes(Collection<String> nodeIds);
 }

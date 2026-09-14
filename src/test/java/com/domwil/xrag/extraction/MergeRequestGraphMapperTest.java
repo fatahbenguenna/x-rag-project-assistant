@@ -33,4 +33,18 @@ class MergeRequestGraphMapperTest {
                         GraphEdge.of("mr:gitlab:42:7", "class:fps-kds/src/main/java/Order.java", GraphEdge.Types.MODIFIES),
                         GraphEdge.of("mr:gitlab:42:7", "issue:PASS-99", GraphEdge.Types.REFERENCES));
     }
+
+    @Test
+    void laBrancheSourcePorteAussiLaCleJira() {
+        var mapper = new MergeRequestGraphMapper(new AliasResolver(Map.of()));
+        var mr = new MergeRequestMeta("git:fps-pos:12", "fps-pos", 12,
+                "Refonte du calcul de TVA", "", "merged",
+                "bob", "feature/PASS-7-refonte-tva", "main", null,
+                List.of(), List.of(), null, null, null);
+
+        ExtractionResult result = mapper.map(mr);
+
+        assertThat(result.edges())
+                .contains(GraphEdge.of("mr:git:fps-pos:12", "issue:PASS-7", GraphEdge.Types.REFERENCES));
+    }
 }

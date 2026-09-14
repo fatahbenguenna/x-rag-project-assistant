@@ -70,6 +70,10 @@ services:
       # Modèle du reranker cross-encoder (optionnel — retrieval.reranker.enabled) :
       # rempli par bootstrap.sh, comme les modèles Ollama vivent dans leur volume.
       - reranker-models:/models/reranker
+      # Dépôts git LOCAUX (mode sources.git, sans token GitLab) : dossier DÉDIÉ de miroirs
+      # bare du poste (GIT_REPOS_DIR dans .env), monté en LECTURE SEULE — l'API lit via JGit
+      # et ne fait jamais de git fetch. Vide = ./repos (créé vide par Docker) : sans effet en mode API.
+      - ${GIT_REPOS_DIR:-./repos}:/repos:ro
     ports:
       - "8080:8080"
     # Pas de depends_on ollama : le conteneur Ollama est optionnel (profil), et en mode

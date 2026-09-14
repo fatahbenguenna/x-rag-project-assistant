@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.out.gitlab;
 
+import com.domwil.xrag.adapter.out.IndexedCodeFiles;
 import com.domwil.xrag.adapter.out.ReadOnlyHttpGuard;
 import com.domwil.xrag.config.TeamConfig;
 import com.domwil.xrag.domain.model.MergeRequestMeta;
@@ -29,13 +30,10 @@ import java.util.function.Function;
  */
 public class GitLabConnector implements SourceConnector, MergeRequestConnector {
 
-    public static final String SOURCE = "gitlab-code";
+    public static final String SOURCE = SourceConnector.CODE_SOURCE;
 
     private static final Logger log = LoggerFactory.getLogger(GitLabConnector.class);
     private static final int PAGE_SIZE = 100;
-    /** Extensions indexées (code + doc + config notable). */
-    private static final Set<String> INDEXED_EXTENSIONS = Set.of(
-            "java", "kt", "ts", "html", "md", "adoc", "yml", "yaml", "properties", "sql", "xml", "json");
 
     private final RestClient http;
     private final TeamConfig.Gitlab config;
@@ -251,8 +249,7 @@ public class GitLabConnector implements SourceConnector, MergeRequestConnector {
     }
 
     private static boolean indexable(String path) {
-        int dot = path.lastIndexOf('.');
-        return dot >= 0 && INDEXED_EXTENSIONS.contains(path.substring(dot + 1).toLowerCase());
+        return IndexedCodeFiles.indexable(path);
     }
 
     /** Boucle de pagination GitLab : s'arrête quand une page revient incomplète. */
