@@ -147,6 +147,31 @@ class MergeCommitMessageParserTest {
     }
 
     @Test
+    void unTitreCommencantParUnVerbeDeClotureResteUnTitre() {
+        // « Resolve "<issue>" » est le titre par défaut d'une MR GitLab créée depuis une issue
+        var resolve = MergeCommitMessageParser.parse(
+                "Merge branch '12-panier-vide' into 'main'\n\nResolve \"Panier vide\"\n\nCloses #12\n\nSee merge request grp/proj!6")
+                .orElseThrow();
+        assertThat(resolve.title()).isEqualTo("Resolve \"Panier vide\"");
+        assertThat(resolve.description()).contains("Closes #12").doesNotContain("Panier vide");
+
+        var fix = MergeCommitMessageParser.parse(
+                "Merge branch 'f' into 'main'\n\nFix NPE on checkout\n\nFixes PASS-3\n\nSee merge request grp/proj!7").orElseThrow();
+        assertThat(fix.title()).isEqualTo("Fix NPE on checkout");
+        assertThat(fix.description()).contains("Fixes PASS-3");
+
+        var implement = MergeCommitMessageParser.parse(
+                "Merge branch 'f' into 'main'\n\nImplements the new menu\n\nSee merge request grp/proj!8").orElseThrow();
+        assertThat(implement.title()).isEqualTo("Implements the new menu");
+
+        // les vrais trailers restent des trailers
+        var trailers = MergeCommitMessageParser.parse(
+                "Merge branch 'f' into 'main'\n\nCloses PASS-9, PASS-10\nCo-authored-by: Bob <b@x>\nChangelog: fixed\n\nSee merge request !9")
+                .orElseThrow();
+        assertThat(trailers.title()).isNull();
+    }
+
+    @Test
     void humaniseLesNomsDeBranche() {
         assertThat(MergeCommitMessageParser.humanizeBranch("feature/PASS-12-suivi_commande"))
                 .isEqualTo("PASS-12 suivi commande");

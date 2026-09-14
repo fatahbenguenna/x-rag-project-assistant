@@ -39,4 +39,16 @@ class GitRepositoriesTest {
         assertThat(GitRepositories.parseRemoteUrl("")).isEmpty();
         assertThat(GitRepositories.parseRemoteUrl("git@host:../evasion.git")).isEmpty();
     }
+
+    @Test
+    void refuseLesRacinesTropLargesHoteOuConteneur() {
+        for (String dangerous : new String[]{"/", "/home", "/home/hassen", "/home/hassen/", "/root", "/Users/bob",
+                "/mnt", "/mnt/c", "/mnt/c/Users", "/mnt/c/Users/hassen", "C:\\", "C:\\Users\\hassen", "/tmp", "/opt"}) {
+            assertThat(GitRepositories.isDangerousRoot(dangerous)).as(dangerous).isTrue();
+        }
+        for (String dedicated : new String[]{"/home/hassen/xrag-repos", "/repos", "/srv/xrag/repos",
+                "/mnt/c/Users/hassen/xrag-repos", "C:\\Users\\hassen\\xrag-repos", "/data"}) {
+            assertThat(GitRepositories.isDangerousRoot(dedicated)).as(dedicated).isFalse();
+        }
+    }
 }

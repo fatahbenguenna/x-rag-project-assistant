@@ -67,11 +67,20 @@ public final class MergeCommitMessageParser {
     /** Fusions de synchronisation (git pull, remote-tracking) : jamais des MRs. */
     private static final Pattern SYNC_MERGE = Pattern.compile(
             "^Merge (?:remote-tracking branch|branch '?[^'\\s]+'? of |branches )");
-    /** Lignes de trailer qui ne sont pas un titre. */
+    /**
+     * Lignes de trailer qui ne sont pas un titre : « See merge request … », les trailers
+     * « Clé: valeur » (Co-authored-by, Signed-off-by, Changelog…), et les mots-clés de clôture
+     * SUIVIS d'une référence ({@code Closes #12}, {@code Fixes PASS-3}). Un titre qui commence
+     * par « Fix », « Resolve "Panier vide" » (titre GitLab par défaut d'une MR créée depuis une
+     * issue) ou « Implements » reste un titre.
+     */
     private static final Pattern TRAILER = Pattern.compile(
-            "^(?:See merge request|Closes?|Close[sd]?|Fix(?:es|ed)?|Resolve[sd]?|Related(?: to)?|Implements?|"
-                    + "Co-authored-by|Signed-off-by|Change-Id|Reviewed-by|Approved-by|Merged-by|Changelog|"
-                    + "Merge-request|This reverts commit)\\b.*",
+            "^(?:See merge request\\b.*"
+                    + "|(?:Co-authored-by|Signed-off-by|Change-Id|Reviewed-by|Approved-by|Merged-by|Changelog|"
+                    + "Merge-request|Related|Tested-by|Acked-by|Cc):.*"
+                    + "|(?:Closes?|Close[sd]?|Fix(?:es|ed)?|Resolve[sd]?|Related to|Implements?)\\s+"
+                    + "(?:#\\d+|!\\d+|[A-Za-z0-9_./-]*[#!]\\d+|[A-Za-z][A-Za-z0-9]+-\\d+|https?://)\\S*(?:[\\s,]+.*)?"
+                    + "|This reverts commit\\b.*)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern REVERT_SUBJECT = Pattern.compile("^Revert \"");
 

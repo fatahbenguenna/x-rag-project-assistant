@@ -45,7 +45,8 @@ sources:
   # Activer : supprimer le bloc gitlab: ci-dessus et décommenter celui-ci. Procédure : docs/RUNBOOK.md §3.
   # git:
   #   root: /repos                    # dossier DANS le conteneur (montage ${GIT_REPOS_DIR:-./repos}:/repos:ro) ;
-  #                                   # /, /home, /mnt, /mnt/c, /tmp... refusés (exposeraient tout le FS)
+  #                                   # GIT_REPOS_DIR (chemin hôte, lu du .env) refusé s'il est trop large :
+  #                                   # /, /home[/<vous>], /root, /mnt[/c[/Users[/<vous>]]], /tmp, /opt…
   #   repos: []                       # sous-chemins relatifs à root (recommandé en prod : périmètre explicite) ;
   #                                   # vide = découverte auto profondeur 4 (root/projet … root/groupe/sous-groupe/projet),
   #                                   # clones de travail (.git) ou dépôts bare (projet.git)

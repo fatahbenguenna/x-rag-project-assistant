@@ -56,8 +56,11 @@ public class ConnectorsConfiguration {
         }
         if (sources.git() != null) {
             // Mode sans API : clones git du poste montés en volume, MRs reconstituées depuis l'historique.
+            // GIT_REPOS_DIR (chemin hôte, hérité du .env via env_file) : seule information qui
+            // permette de refuser une racine trop large — dans le conteneur, root vaut toujours /repos
             var git = new LocalGitConnector(sources.git(),
-                    sources.jira() == null ? java.util.List.of() : sources.jira().projects());
+                    sources.jira() == null ? java.util.List.of() : sources.jira().projects(),
+                    env.getProperty("GIT_REPOS_DIR"));
             log.info("Code et MRs : dépôts git locaux sous {} (branches {}, remote {}) — aucun appel API GitLab",
                     sources.git().root(), sources.git().branches(), sources.git().remote());
             documentConnectors.add(git);

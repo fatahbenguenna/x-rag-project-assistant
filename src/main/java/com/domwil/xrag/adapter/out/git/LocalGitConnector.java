@@ -55,19 +55,30 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
 
     private final TeamConfig.Git config;
     private final Path root;
+    private final String hostPathHint;
     private final GitCodeReader codeReader;
     private final GitHistoryMergeRequestReconstructor reconstructor;
     /** Instantané des MRs ouvertes de la dernière récolte COMPLÈTE réussie ; null sinon. */
     private final AtomicReference<Set<String>> lastOpenSnapshot = new AtomicReference<>();
 
     public LocalGitConnector(TeamConfig.Git config) {
-        this(config, List.of());
+        this(config, List.of(), null);
     }
 
-    /** @param jiraProjects projets Jira configurés (repli quand {@code merge-requests.jira-projects} est vide) */
     public LocalGitConnector(TeamConfig.Git config, List<String> jiraProjects) {
+        this(config, jiraProjects, null);
+    }
+
+    /**
+     * @param jiraProjects projets Jira configurés (repli quand {@code merge-requests.jira-projects} est vide)
+     * @param hostPathHint chemin HÔTE monté sur {@code root} ({@code GIT_REPOS_DIR} du .env) — dans le
+     *                     conteneur la racine est toujours {@code /repos} : c'est ce chemin qui révèle une
+     *                     racine trop large ({@code /home/x}) ; null = inconnu
+     */
+    public LocalGitConnector(TeamConfig.Git config, List<String> jiraProjects, String hostPathHint) {
         this.config = config;
         this.root = Path.of(config.root());
+        this.hostPathHint = hostPathHint;
         this.codeReader = new GitCodeReader(config.maxFileKb(), config.webBaseUrl());
         var mr = config.mergeRequests();
         this.reconstructor = new GitHistoryMergeRequestReconstructor(new GitHistoryMergeRequestReconstructor.Options(
@@ -185,7 +196,7 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
     private List<GitRepositories.LocalRepo> repositories() {
         List<GitRepositories.LocalRepo> repos;
         try {
-            repos = GitRepositories.discover(root, config.repos(), config.remote());
+            repos = GitRepositories.discover(root, config.repos(), config.remote(), hostPathHint);
         } catch (IOException e) {
             throw new IllegalStateException("Lecture de " + root + " impossible : " + e.getMessage(), e);
         }

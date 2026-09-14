@@ -37,9 +37,19 @@ final class GitRepositories {
     private static final Logger log = LoggerFactory.getLogger(GitRepositories.class);
     /** {@code root/grp/sous-grp/sous-sous-grp/projet.git} : les sous-groupes GitLab s'imbriquent. */
     private static final int MAX_DEPTH = 4;
-    /** Racines qui exposeraient bien plus que les dépôts de l'équipe (secrets, dépôts perso). */
-    private static final Set<String> FORBIDDEN_ROOTS = Set.of("/", "/home", "/root", "/mnt", "/mnt/c", "/tmp",
-            "/etc", "/var", "/usr", "/opt", "/app", "/config");
+    /**
+     * Racines qui exposeraient bien plus que les dépôts de l'équipe (secrets, dépôts perso) :
+     * système, home d'un utilisateur ({@code /home/x}, {@code /Users/x}, {@code C:/Users/x}),
+     * lecteurs Windows montés ({@code /mnt/c}, {@code /mnt/c/Users/x}). Appliqué au chemin dans
+     * le conteneur ET au chemin hôte {@code GIT_REPOS_DIR} (sous Docker, le premier vaut
+     * toujours {@code /repos} : seul le second révèle une racine trop large).
+     */
+    private static final Pattern DANGEROUS_ROOT = Pattern.compile(
+            "^(?:/|/(?:home|root|Users|mnt|tmp|etc|var|usr|opt|app|config|srv|media|proc|sys)"
+                    + "|/(?:home|Users)/[^/]+|/mnt/[^/]+|/mnt/[^/]+/Users(?:/[^/]+)?"
+                    + "|[A-Za-z]:|[A-Za-z]:/Users(?:/[^/]+)?)$");
+    /** Au-delà, la racine n'est manifestement pas un dossier dédié : périmètre explicite exigé. */
+    private static final int MAX_AUTO_DISCOVERED = 200;
     /** {@code git@host:grp/proj.git}, {@code https://host/grp/proj.git}, {@code ssh://git@host:2222/grp/proj} */
     private static final Pattern REMOTE_URL = Pattern.compile(
             "^(?:(?<scheme>[a-z+]+)://(?:[^@/]+@)?(?<host>[^:/]+)(?::(?<port>\\d+))?/|(?:[^@]+@)?(?<sshHost>[^:/]+):)(?<path>.+?)(?:\\.git)?/?$");
@@ -60,16 +70,27 @@ final class GitRepositories {
     private GitRepositories() {
     }
 
-    /** Dépôts explicitement listés (relatifs à la racine, jamais au-dessus) ou découverts. */
-    static List<LocalRepo> discover(Path root, List<String> explicit, String remote) throws IOException {
+    /**
+     * Dépôts explicitement listés (relatifs à la racine, jamais au-dessus) ou découverts.
+     *
+     * @param hostPathHint chemin HÔTE monté sur la racine ({@code GIT_REPOS_DIR}), s'il est connu —
+     *                     contrôlé comme la racine elle-même ; null/vide = inconnu
+     */
+    static List<LocalRepo> discover(Path root, List<String> explicit, String remote, String hostPathHint)
+            throws IOException {
         if (!Files.isDirectory(root)) {
             throw new IllegalStateException("sources.git.root introuvable dans le conteneur : " + root
                     + " — vérifier le montage GIT_REPOS_DIR (docker-compose) et le chemin");
         }
         Path realRoot = root.toRealPath();
-        if (FORBIDDEN_ROOTS.contains(realRoot.toString())) {
+        if (isDangerousRoot(realRoot.toString())) {
             throw new IllegalStateException("sources.git.root = " + realRoot + " exposerait tout le système de "
                     + "fichiers au conteneur (et au chat) : monter un dossier DÉDIÉ aux dépôts de l'équipe");
+        }
+        if (hostPathHint != null && !hostPathHint.isBlank() && isDangerousRoot(hostPathHint)) {
+            throw new IllegalStateException("GIT_REPOS_DIR = " + hostPathHint.strip() + " (chemin hôte monté sur "
+                    + realRoot + ") exposerait bien plus que les dépôts de l'équipe (home, disque entier…) au "
+                    + "conteneur et au chat : monter un dossier DÉDIÉ, ex. /home/<vous>/xrag-repos");
         }
         var repos = new ArrayList<LocalRepo>();
         if (!explicit.isEmpty()) {
@@ -89,8 +110,22 @@ final class GitRepositories {
             return repos;
         }
         scan(realRoot, realRoot, 1, remote, repos);
+        if (repos.size() > MAX_AUTO_DISCOVERED) {
+            throw new IllegalStateException(repos.size() + " dépôts découverts sous " + realRoot + " (> "
+                    + MAX_AUTO_DISCOVERED + ") : la racine n'est pas un dossier dédié — lister le périmètre "
+                    + "dans sources.git.repos");
+        }
         repos.sort((a, b) -> a.fullPath().compareTo(b.fullPath()));
         return repos;
+    }
+
+    /** Racine trop large ({@code /}, {@code /home/x}, {@code /mnt/c/Users/x}, {@code C:\\Users\\x}…). */
+    static boolean isDangerousRoot(String path) {
+        String normalized = path.strip().replace('\\', '/');
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return DANGEROUS_ROOT.matcher(normalized).matches();
     }
 
     private static void scan(Path root, Path dir, int depth, String remote, List<LocalRepo> found) throws IOException {

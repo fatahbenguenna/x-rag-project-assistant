@@ -323,7 +323,12 @@ class LocalGitConnectorTest {
             config.unsetSection("remote", "origin");
             config.save();
         }
-        Files.createSymbolicLink(root.resolve("repos").resolve("lien"), root.resolve("upstream"));
+        try {
+            // si le lien était suivi, il mènerait à upstream/fps-pos.git : doublon de slug → erreur
+            Files.createSymbolicLink(root.resolve("repos").resolve("lien"), root.resolve("upstream"));
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException e) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "liens symboliques indisponibles ici : " + e);
+        }
 
         List<SourceDocument> docs = connector().fetchChangedSince(null);
 
@@ -393,6 +398,129 @@ class LocalGitConnectorTest {
 
         assertThat(mrs).noneMatch(m -> m.state().equals("opened"));
         assertThat(connector.currentlyOpenIds()).isEmpty(); // pas un instantané : la table est laissée telle quelle
+    }
+
+    @Test
+    void deuxAuteursEntrelacesParUnGitPullGardentChacunLeurSerie() throws Exception {
+        // Alice a1 (t1), Bob b1 (t2), Alice a2 (t3), Bob b2 (t4) ; Bob pousse ; Alice fait « git pull »
+        // (fusion de synchronisation) puis pousse : l'ordre par date entrelace les deux lignées
+        Path aliceDir = root.resolve("authoring-alice");
+        Path bobDir = root.resolve("authoring-bob");
+        try (Git aliceGit = noSigning(Git.cloneRepository().setURI(upstreamDir.toUri().toString()).setDirectory(aliceDir.toFile()).call());
+             Git bobGit = noSigning(Git.cloneRepository().setURI(upstreamDir.toUri().toString()).setDirectory(bobDir.toFile()).call())) {
+            commitFile(aliceGit, "a1.md", "a1\n", "PASS-20 alice 1", alice);
+            commitFile(bobGit, "b1.md", "b1\n", "PASS-30 bob 1", bob);
+            commitFile(aliceGit, "a2.md", "a2\n", "PASS-20 alice 2", alice);
+            commitFile(bobGit, "b2.md", "b2\n", "PASS-30 bob 2", bob);
+            bobGit.push().add("main").call();
+            aliceGit.fetch().call();
+            PersonIdent puller = new PersonIdent(alice, Instant.ofEpochSecond(clock += 60), ZoneOffset.UTC);
+            aliceGit.merge().include(aliceGit.getRepository().resolve("origin/main"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'main' of " + upstreamDir.toUri()).call();
+            // le commit de fusion de JGit prend la date courante : on le re-date via un commit --amend équivalent
+            aliceGit.commit().setAmend(true).setAuthor(puller).setCommitter(puller).setSign(false)
+                    .setMessage("Merge branch 'main' of " + upstreamDir.toUri()).call();
+            aliceGit.push().add("main").call();
+        }
+        clone.fetch().call();
+
+        List<MergeRequestMeta> mrs = connector().fetchUpdatedAfter(null);
+
+        List<MergeRequestMeta> series = mrs.stream().filter(m -> m.id().startsWith("git:fps-pos:commits:")
+                && m.description().matches("(?s).*Clés Jira : PASS-(20|30)\\n.*")).toList();
+        assertThat(series).extracting(MergeRequestMeta::title)
+                .containsExactlyInAnyOrder("PASS-20 alice 1", "PASS-30 bob 1"); // deux séries, pas quatre
+        assertThat(series.stream().filter(m -> m.title().startsWith("PASS-20")).findFirst().orElseThrow().changedFiles())
+                .containsExactlyInAnyOrder("a1.md", "a2.md");
+        assertThat(series.stream().filter(m -> m.title().startsWith("PASS-30")).findFirst().orElseThrow().changedFiles())
+                .containsExactlyInAnyOrder("b1.md", "b2.md");
+        assertThat(mrs).noneMatch(m -> m.id().contains(":merge:")); // la fusion de synchronisation n'est pas une MR
+    }
+
+    @Test
+    void leCurseurElargiDeRescanDaysRepecheLesFusionsRecentesEtIgnoreLesAnciennes() throws Exception {
+        RevCommit merge;
+        try (Git author = authoringClone()) {
+            author.checkout().setCreateBranch(true).setName("feature/PASS-50").call();
+            commitFile(author, "F.java", "class F {}\n", "PASS-50 f", bob);
+            author.checkout().setName("main").call();
+            author.merge().include(author.getRepository().resolve("feature/PASS-50"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'feature/PASS-50' into 'main'\n\nPASS-50 F\n\nSee merge request grp/fps-pos!500").call();
+            PersonIdent merger = new PersonIdent(alice, Instant.ofEpochSecond(clock += 60), ZoneOffset.UTC);
+            author.commit().setAmend(true).setAuthor(merger).setCommitter(merger).setSign(false)
+                    .setMessage("Merge branch 'feature/PASS-50' into 'main'\n\nPASS-50 F\n\nSee merge request grp/fps-pos!500").call();
+            merge = author.log().setMaxCount(1).call().iterator().next();
+            author.push().add("main").call();
+            author.checkout().setCreateBranch(true).setName("feature/PASS-51-open").call();
+            commitFile(author, "O.java", "class O {}\n", "PASS-51 o", bob);
+            author.push().add("feature/PASS-51-open").call();
+        }
+        clone.fetch().call();
+        Instant mergedAt = merge.getCommitterIdent().getWhenAsInstant();
+        var thirtyDays = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(), List.of(),
+                List.of("main"), "origin", WEB, 64,
+                new TeamConfig.GitMergeRequests(true, true, true, null, null, 30, null, null)), List.of("PASS"));
+        var noRescan = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(), List.of(),
+                List.of("main"), "origin", WEB, 64,
+                new TeamConfig.GitMergeRequests(true, true, true, null, null, 0, null, null)), List.of("PASS"));
+
+        assertThat(thirtyDays.fetchUpdatedAfter(mergedAt.plus(29, java.time.temporal.ChronoUnit.DAYS)))
+                .anyMatch(m -> m.iid() == 500);                       // repêchée : fetch tardif dans la fenêtre
+        List<MergeRequestMeta> beyond = thirtyDays.fetchUpdatedAfter(mergedAt.plus(31, java.time.temporal.ChronoUnit.DAYS));
+        assertThat(beyond).noneMatch(m -> m.iid() == 500);           // hors fenêtre
+        assertThat(beyond).noneMatch(m -> m.id().startsWith("git:fps-pos:commits:")); // séries anciennes filtrées aussi
+        assertThat(beyond).anyMatch(m -> m.state().equals("opened")); // les branches ouvertes ne sont jamais filtrées
+        assertThat(noRescan.fetchUpdatedAfter(mergedAt.plusSeconds(1))).noneMatch(m -> m.iid() == 500);
+        assertThat(noRescan.fetchUpdatedAfter(mergedAt.minusSeconds(1))).anyMatch(m -> m.iid() == 500);
+    }
+
+    @Test
+    void mainEtDevelopUneFusionVueUneSeuleFoisEtIntegrationSansListing() throws Exception {
+        try (Git author = authoringClone()) {
+            author.checkout().setCreateBranch(true).setName("develop").call();
+            commitFile(author, "D.java", "class D {}\n", "PASS-60 direct sur develop", alice);
+            author.checkout().setCreateBranch(true).setName("feature/PASS-61").call();
+            commitFile(author, "E.java", "class E {}\n", "PASS-61 e", bob);
+            author.checkout().setName("develop").call();
+            author.merge().include(author.getRepository().resolve("feature/PASS-61"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'feature/PASS-61' into 'develop'\n\nPASS-61 E\n\nSee merge request grp/fps-pos!10").call();
+            author.push().add("develop").call();
+            author.checkout().setName("main").call();
+            author.merge().include(author.getRepository().resolve("develop"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'develop' into 'main'\n\nRelease 2.4\n\nSee merge request grp/fps-pos!11").call();
+            author.push().add("main").call();
+        }
+        clone.fetch().call();
+        var connector = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(), List.of(),
+                List.of("main", "develop"), "origin", WEB, 64, null), List.of("PASS"));
+
+        List<MergeRequestMeta> mrs = connector.fetchUpdatedAfter(null);
+
+        assertThat(mrs).filteredOn(m -> m.iid() == 10).hasSize(1); // vue depuis main, pas re-vue depuis develop
+        MergeRequestMeta feature = mrs.stream().filter(m -> m.iid() == 10).findFirst().orElseThrow();
+        assertThat(feature.targetBranch()).isEqualTo("develop");
+        assertThat(feature.changedFiles()).containsExactly("E.java");
+        MergeRequestMeta release = mrs.stream().filter(m -> m.iid() == 11).findFirst().orElseThrow();
+        assertThat(release.title()).isEqualTo("Release 2.4");
+        assertThat(release.changedFiles()).isEmpty();                              // intégration : pas de MODIFIES massif
+        assertThat(release.description()).contains("intégration").doesNotContain("PASS-61 e"); // ni listing des commits
+        assertThat(release.description()).doesNotContain("Clés Jira : PASS-61");
+        assertThat(mrs).filteredOn(m -> m.title().equals("PASS-60 direct sur develop")).hasSize(1); // série vue une fois
+        assertThat(mrs).noneMatch(m -> m.title().equals("PASS-61 e")); // couvert par sa MR
+        assertThat(mrs).allMatch(m -> m.iid() != 0 || !m.title().equals("PASS-61 E"));
+    }
+
+    @Test
+    void uneRacineHoteTropLargeEstRefuseeMemeSiLeConteneurVoitRepos() {
+        var connector = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(), List.of(),
+                List.of("main"), null, null, null, null), List.of(), "/home/hassen");
+
+        assertThatThrownBy(() -> connector.fetchChangedSince(null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("GIT_REPOS_DIR = /home/hassen");
     }
 
     @Test

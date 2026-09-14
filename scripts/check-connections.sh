@@ -32,6 +32,12 @@ pass=0; fail=0
 ok() { printf '  [OK] %s\n' "$1"; pass=$((pass + 1)); }
 ko() { printf '  [KO] %s — %s\n' "$1" "$2"; fail=$((fail + 1)); }
 warn() { printf '  [!!] %s — %s\n' "$1" "$2"; }   # signalé, ne compte pas comme KO
+# Racine trop large (même règle que l'API, GitRepositories.isDangerousRoot) : système, home d'un
+# utilisateur, lecteur Windows monté — le contenu deviendrait interrogeable via le chat.
+dangerous_root() { # dangerous_root <chemin> — code retour 0 si refusé
+  local p; p=$(printf '%s' "$1" | tr '\\' '/' | sed -E 's#/+$##'); [ -n "$p" ] || p=/
+  [[ "$p" =~ ^(/|/(home|root|Users|mnt|tmp|etc|var|usr|opt|app|config|srv|media|proc|sys)|/(home|Users)/[^/]+|/mnt/[^/]+|/mnt/[^/]+/Users(/[^/]+)?|[A-Za-z]:|[A-Za-z]:/Users(/[^/]+)?)$ ]]
+}
 
 # --- Vérification HTTP générique -------------------------------------------
 http_json() { # http_json <label> <motif attendu> <url> [args curl...]
@@ -157,12 +163,8 @@ if [ -n "$git_root" ]; then
   else
     git_real=$(readlink -f "$git_dir")
     case "$git_dir" in /mnt/*) warn "GIT_REPOS_DIR sous /mnt" "DrvFs lent et fragile — préférer le FS WSL (ex. ~/xrag-repos)" ;; esac
-    git_forbidden=false
-    for forbidden in / /home /root /mnt /mnt/c /tmp /etc /var /usr /opt /app /config; do
-      [ "$git_real" = "$forbidden" ] && git_forbidden=true
-    done
-    if [ "$git_forbidden" = true ]; then
-      ko "GIT_REPOS_DIR=$git_real" "racine refusée par l'API (exposerait tout le FS au conteneur) — dossier DÉDIÉ aux miroirs"
+    if dangerous_root "$git_real" || dangerous_root "$git_dir"; then
+      ko "GIT_REPOS_DIR=$git_dir" "racine trop large, refusée par l'API (home, disque entier… exposés au conteneur et au chat) — dossier DÉDIÉ aux miroirs, ex. /home/<vous>/xrag-repos"
     else
       ok "GIT_REPOS_DIR=$git_dir (absolu, dédié)"
       # Dépôt git ? clone de travail (.git dossier ou fichier « gitdir: ») ou bare — règle de l'API

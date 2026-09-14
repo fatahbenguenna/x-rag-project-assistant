@@ -21,7 +21,7 @@
 # sur ce dossier : le remote n'existe pas, les étapes ci-dessous poussent directement.
 #
 # Prérequis : git >= 2.28. Aucun token, aucun réseau. <dossier> = la valeur à mettre dans
-# GIT_REPOS_DIR (.env) — chemin absolu, dossier DÉDIÉ (jamais /tmp, /home... : refusés par l'API).
+# GIT_REPOS_DIR (.env) — chemin absolu, dossier DÉDIÉ (jamais /tmp, /home/<vous>, /mnt/c… : refusés par l'API).
 #
 # Usage : ./setup-git-local.sh <dossier> init | increment | prune | merge-mr1
 set -euo pipefail
@@ -41,9 +41,15 @@ usage() { echo "Usage : $0 <dossier> init | increment | prune | merge-mr1" >&2; 
 [ $# -eq 2 ] || usage
 ROOT_ARG=$1 ACTION=$2
 case "$ROOT_ARG" in /*) ;; *) echo "<dossier> doit être un chemin ABSOLU (il devient GIT_REPOS_DIR)" >&2; exit 1 ;; esac
-for forbidden in / /home /root /mnt /mnt/c /tmp /etc /var /usr /opt /app /config; do
-  [ "${ROOT_ARG%/}" = "$forbidden" ] && { echo "$ROOT_ARG : racine refusée par l'API — choisir un dossier DÉDIÉ" >&2; exit 1; }
-done
+# Racine trop large (même règle que l'API, GitRepositories.isDangerousRoot) : système, home d'un
+# utilisateur, lecteur Windows monté — le contenu deviendrait interrogeable via le chat.
+dangerous_root() { # dangerous_root <chemin> — code retour 0 si refusé
+  local p; p=$(printf '%s' "$1" | tr '\\' '/' | sed -E 's#/+$##'); [ -n "$p" ] || p=/
+  [[ "$p" =~ ^(/|/(home|root|Users|mnt|tmp|etc|var|usr|opt|app|config|srv|media|proc|sys)|/(home|Users)/[^/]+|/mnt/[^/]+|/mnt/[^/]+/Users(/[^/]+)?|[A-Za-z]:|[A-Za-z]:/Users(/[^/]+)?)$ ]]
+}
+if dangerous_root "$ROOT_ARG"; then
+  echo "$ROOT_ARG : racine trop large, refusée par l'API — choisir un dossier DÉDIÉ (ex. ~/xrag-testbed)" >&2; exit 1
+fi
 mkdir -p "$ROOT_ARG"
 ROOT="$(cd "$ROOT_ARG" && pwd -P)"
 SANDBOX="$ROOT/x-rag-sandbox"

@@ -36,11 +36,17 @@ esac
 case "$DIR" in
   /mnt/*) echo "AVERTISSEMENT : $DIR est sous /mnt (DrvFs) — lent et fragile ; préférer le FS WSL (ex. ~/xrag-repos)." >&2 ;;
 esac
+# Racine trop large (même règle que l'API, GitRepositories.isDangerousRoot) : système, home d'un
+# utilisateur, lecteur Windows monté — le contenu deviendrait interrogeable via le chat.
+dangerous_root() { # dangerous_root <chemin> — code retour 0 si refusé
+  local p; p=$(printf '%s' "$1" | tr '\\' '/' | sed -E 's#/+$##'); [ -n "$p" ] || p=/
+  [[ "$p" =~ ^(/|/(home|root|Users|mnt|tmp|etc|var|usr|opt|app|config|srv|media|proc|sys)|/(home|Users)/[^/]+|/mnt/[^/]+|/mnt/[^/]+/Users(/[^/]+)?|[A-Za-z]:|[A-Za-z]:/Users(/[^/]+)?)$ ]]
+}
+if dangerous_root "$DIR"; then
+  echo "ERREUR : $DIR est une racine trop large (home, disque entier…) — l'API la refuse : choisir un dossier DÉDIÉ, ex. /home/<vous>/xrag-repos." >&2; exit 1
+fi
 mkdir -p "$DIR"
 DIR="$(realpath "$DIR")"
-for forbidden in / /home /root /mnt /mnt/c /tmp /etc /var /usr /opt /app /config; do
-  [ "$DIR" = "$forbidden" ] && { echo "ERREUR : $DIR exposerait tout le système de fichiers au conteneur — choisir un dossier DÉDIÉ." >&2; exit 1; }
-done
 
 # Chemin distant grp/sub/proj déduit d'une URL de clone (même règle que l'API : dernier
 # segment = nom technique du projet). Une URL locale (file://, chemin absolu) n'a pas de

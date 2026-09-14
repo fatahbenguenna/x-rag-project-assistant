@@ -63,8 +63,9 @@ final class GitHistoryMergeRequestReconstructor {
     static final Duration SERIES_GAP = Duration.ofDays(7);
     private static final String PROVENANCE_NOTE = "(historique git local, sans API)";
     /** Auteurs exclus du vote « auteur de la MR » (bots, CI). */
+    // pas « noreply » : les humains de GitHub commitent en <login>@users.noreply.github.com
     private static final Pattern BOT_AUTHOR = Pattern.compile(
-            "(?i)\\[bot\\]|dependabot|renovate|semantic-release|noreply|no-reply|gitlab-ci|jenkins|\\bci\\b");
+            "(?i)\\[bot\\]|dependabot|renovate|semantic-release|gitlab-ci|jenkins|\\bci\\b");
 
     record Options(boolean fromMergeCommits, boolean fromLinearCommits, boolean fromOpenBranches,
                    List<String> openBranchesExclude, Collection<String> jiraProjects,
@@ -453,9 +454,11 @@ final class GitHistoryMergeRequestReconstructor {
                                                     List<ObjectId> uninteresting) throws IOException {
         var commits = new ArrayList<RevCommit>();
         try (RevWalk walk = new RevWalk(repository)) {
-            // topologique : les commits d'une même branche restent contigus même quand un
-            // « git pull » a entrelacé les dates de deux auteurs (séries par clé Jira)
-            walk.sort(RevSort.TOPO, true);
+            // TOPO_KEEP_BRANCH_TOGETHER (et non TOPO, qui ne garantit que « enfants avant
+            // parents ») : les commits d'une même lignée restent contigus même quand un « git
+            // pull » a entrelacé les dates de deux auteurs — sinon leurs séries par clé Jira
+            // seraient fragmentées en autant de MRs synthétiques (vérifié sur JGit 7.8)
+            walk.sort(RevSort.TOPO_KEEP_BRANCH_TOGETHER, true);
             walk.sort(RevSort.COMMIT_TIME_DESC, true);
             walk.markStart(walk.parseCommit(head));
             for (ObjectId other : uninteresting) {
