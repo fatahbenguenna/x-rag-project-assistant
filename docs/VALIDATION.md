@@ -29,8 +29,8 @@ Bootstrap lancé — README étape 7 (3-6 h la première nuit selon le volume).
       commit de fusion porte la référence GitLab) ou `opened` (branche non fusionnée, citée
       par `git-branch:<slug>:<branche>`) ; dashboard `dashboard.html` : lignes
       `gitlab-code` et `gitlab-mr` en OK, **aucune** en `ERREUR` (racine introuvable,
-      0 dépôt, clone partiel, objet manquant → RUNBOOK §9) ; logs `rag-api` sans WARN
-      « miroir périmé » ni « aucune des branches … n'existe ».
+      0 dépôt, branche cible absente, clone partiel, objet manquant → RUNBOOK §9) ; logs
+      `rag-api` sans WARN « miroir périmé ».
 
 ## 3. Qualité du graphe (décision d'architecture n°10)
 

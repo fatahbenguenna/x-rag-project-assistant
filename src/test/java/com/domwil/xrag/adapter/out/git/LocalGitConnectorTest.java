@@ -258,7 +258,7 @@ class LocalGitConnectorTest {
         assertThat(open.changedFiles()).containsExactly("Vat.java");
         assertThat(open.mergedAt()).isNull();
         assertThat(open.webUrl()).isEqualTo(WEB + "/fps-pos/-/tree/feature/PASS-9-refonte-tva");
-        // instantané autoritaire, même avec un curseur dans le futur
+        // instantané autoritaire de la récolte, même avec un curseur dans le futur
         assertThat(connector.currentlyOpenIds()).contains(Set.of("git-branch:fps-pos:feature/PASS-9-refonte-tva"));
 
         // Fusion fast-forward + suppression de la branche : plus de MR ouverte, la série PASS-9 devient une MR synthétique
@@ -297,10 +297,14 @@ class LocalGitConnectorTest {
         }
         clone.fetch().call();
 
-        List<MergeRequestMeta> mrs = connector().fetchUpdatedAfter(null);
+        LocalGitConnector connector = connector();
+        List<MergeRequestMeta> mrs = connector.fetchUpdatedAfter(null);
 
         assertThat(mrs).noneMatch(m -> m.state().equals("opened") && m.sourceBranch().equals("feature/PASS-5-menu"));
         assertThat(mrs).anyMatch(m -> m.iid() == 170);
+        // l'instantané autoritaire est celui de la récolte : la branche n'y figure pas non plus,
+        // sinon sa ligne « opened » d'une sync précédente ne serait jamais retirée
+        assertThat(connector.currentlyOpenIds()).contains(Set.of());
     }
 
     @Test
@@ -346,14 +350,118 @@ class LocalGitConnectorTest {
     }
 
     @Test
-    void unCheminExpliciteHorsRacineEstIgnore() {
-        var connector = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(),
+    void unCheminExpliciteHorsRacineOuAbsentEstUneErreurFailClosed() {
+        var outside = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(),
                 List.of("../upstream/fps-pos.git", "fps-pos"), List.of("main"), null, null, null, null));
+        assertThatThrownBy(() -> outside.fetchChangedSince(null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("hors de la racine");
 
-        List<SourceDocument> docs = connector.fetchChangedSince(null);
+        var absent = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(),
+                List.of("fps-pos", "fps-inexistant"), List.of("main"), null, null, null, null));
+        assertThatThrownBy(() -> absent.fetchUpdatedAfter(null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("fps-inexistant");
+        assertThat(absent.currentlyOpenIds()).isEmpty(); // récolte en échec : aucun instantané
 
-        assertThat(docs).extracting(SourceDocument::project).containsOnly("fps-pos");
-        assertThat(docs).hasSize(2); // une seule fois : le chemin hors racine n'a pas été suivi
+        var explicit = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(),
+                List.of("fps-pos"), List.of("main"), null, null, null, null));
+        assertThat(explicit.fetchChangedSince(null)).hasSize(2);
+    }
+
+    @Test
+    void deuxDepotsDeMemeSlugSontRefuses() throws Exception {
+        Path fork = root.resolve("repos").resolve("fork").resolve("fps-pos");
+        Files.createDirectories(fork.getParent());
+        noSigning(Git.cloneRepository().setURI(upstreamDir.toUri().toString()).setDirectory(fork.toFile()).call()).close();
+
+        assertThatThrownBy(() -> connector().fetchChangedSince(null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("même projet « fps-pos");
+    }
+
+    @Test
+    void sansVoieBranchesOuvertesAucunInstantaneDoncAucuneReconciliation() throws Exception {
+        try (Git author = authoringClone()) {
+            author.checkout().setCreateBranch(true).setName("feature/PASS-77").call();
+            commitFile(author, "S.java", "class S {}\n", "PASS-77 s", bob);
+            author.push().add("feature/PASS-77").call();
+        }
+        clone.fetch().call();
+        var connector = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(), List.of(),
+                List.of("main"), "origin", WEB, 64,
+                new TeamConfig.GitMergeRequests(true, true, false, null, null, null, null, null)), List.of("PASS"));
+
+        List<MergeRequestMeta> mrs = connector.fetchUpdatedAfter(null);
+
+        assertThat(mrs).noneMatch(m -> m.state().equals("opened"));
+        assertThat(connector.currentlyOpenIds()).isEmpty(); // pas un instantané : la table est laissée telle quelle
+    }
+
+    @Test
+    void uneBrancheCibleAbsenteDeToutDepotEstUneErreur() {
+        var connector = new LocalGitConnector(new TeamConfig.Git(root.resolve("repos").toString(),
+                List.of(), List.of("master"), null, null, null, null));
+
+        assertThatThrownBy(() -> connector.fetchChangedSince(null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("[master]");
+    }
+
+    @Test
+    void laSynchronisationDUneCibleDansUneFeatureNestPasUneMrEtNeCouvrePasMain() throws Exception {
+        RevCommit pass2;
+        try (Git author = authoringClone()) {
+            author.checkout().setCreateBranch(true).setName("feature/PASS-30-long").call();
+            commitFile(author, "Long.java", "class Long {}\n", "PASS-30 début", bob);
+            author.checkout().setName("main").call();
+            pass2 = commitFile(author, "Main.java", "class Main {}\n", "PASS-2 direct sur main", alice);
+            // le dev synchronise sa feature avec main (git merge main) …
+            author.checkout().setName("feature/PASS-30-long").call();
+            author.merge().include(author.getRepository().resolve("main"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'main' into feature/PASS-30-long").call();
+            commitFile(author, "Long.java", "class Long { int x; }\n", "PASS-30 fin", bob);
+            // … puis la feature est fusionnée par GitLab
+            author.checkout().setName("main").call();
+            author.merge().include(author.getRepository().resolve("feature/PASS-30-long"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'feature/PASS-30-long' into 'main'\n\nPASS-30 Long\n\nSee merge request grp/fps-pos!200")
+                    .call();
+            author.push().add("main").call();
+        }
+        clone.fetch().call();
+
+        List<MergeRequestMeta> mrs = connector().fetchUpdatedAfter(null);
+
+        assertThat(mrs).anyMatch(m -> m.iid() == 200 && m.changedFiles().contains("Long.java"));
+        assertThat(mrs).noneMatch(m -> "main".equals(m.sourceBranch())); // la sync main→feature n'est pas une MR
+        assertThat(mrs).noneMatch(m -> m.id().contains(":merge:"));
+        // le commit direct PASS-2 sur main reste une série synthétique (non « couvert » par la sync)
+        assertThat(mrs).anyMatch(m -> m.id().equals("git:fps-pos:commits:" + pass2.name())
+                && m.title().equals("PASS-2 direct sur main"));
+    }
+
+    @Test
+    void unCommitQuiCiteUneMrNestPasSonCommitDeSquash() throws Exception {
+        try (Git author = authoringClone()) {
+            author.checkout().setCreateBranch(true).setName("feature/PASS-42-x").call();
+            commitFile(author, "X.java", "class X {}\n", "PASS-42 x", bob);
+            author.checkout().setName("main").call();
+            author.merge().include(author.getRepository().resolve("feature/PASS-42-x"))
+                    .setFastForward(MergeCommand.FastForwardMode.NO_FF).setCommit(true)
+                    .setMessage("Merge branch 'feature/PASS-42-x' into 'main'\n\nPASS-42 Vrai titre\n\nSee merge request grp/fps-pos!153")
+                    .call();
+            // plus tard, un commit direct CITE la MR (et un revert GitLab la cite aussi)
+            commitFile(author, "Y.java", "class Y {}\n", "PASS-43 régression de !153 corrigée", alice);
+            commitFile(author, "X.java", "", "Revert \"PASS-42 Vrai titre (grp/fps-pos!153)\"\n\nThis reverts merge request !153", alice);
+            author.push().add("main").call();
+        }
+        clone.fetch().call();
+
+        List<MergeRequestMeta> mrs = connector().fetchUpdatedAfter(null);
+
+        MergeRequestMeta mr = mrs.stream().filter(m -> m.iid() == 153).findFirst().orElseThrow();
+        assertThat(mr.title()).isEqualTo("PASS-42 Vrai titre"); // pas préemptée par le commit citant !153
+        assertThat(mr.changedFiles()).containsExactly("X.java");
+        assertThat(mrs).filteredOn(m -> m.iid() == 153).hasSize(1);
+        assertThat(mrs).anyMatch(m -> m.id().startsWith("git:fps-pos:commits:") && m.title().startsWith("PASS-43"));
     }
 
     // ---- helpers ------------------------------------------------------------------------

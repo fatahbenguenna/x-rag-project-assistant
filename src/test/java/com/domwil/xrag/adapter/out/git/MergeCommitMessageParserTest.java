@@ -109,15 +109,41 @@ class MergeCommitMessageParserTest {
     }
 
     @Test
-    void referenceDeSquashEtSuffixeDeTitre() {
+    void referenceDeFusionParOrdreDeFiabilite() {
+        // le trailer prime sur une MR citée dans la description
+        assertThat(MergeCommitMessageParser.reference(
+                "Merge branch 'a' into 'main'\n\nCorrige la régression de grp/proj!7\n\nSee merge request grp/proj!12"))
+                .contains(new MergeCommitMessageParser.MergeReference(12, "grp/proj"));
         assertThat(MergeCommitMessageParser.reference("Titre (grp/proj!12)")).contains(
                 new MergeCommitMessageParser.MergeReference(12, "grp/proj"));
-        assertThat(MergeCommitMessageParser.reference("Titre !12")).contains(
+        assertThat(MergeCommitMessageParser.reference("See merge request !12")).contains(
                 new MergeCommitMessageParser.MergeReference(12, null));
+        assertThat(MergeCommitMessageParser.reference("Titre !12")).isEmpty();          // « !12 » nu : une citation
         assertThat(MergeCommitMessageParser.reference("Wow!2024 c'est top")).isEmpty(); // pas une référence
         assertThat(MergeCommitMessageParser.reference("PASS-1 commit ordinaire")).isEmpty();
+    }
+
+    @Test
+    void referenceDeSquashSeulementDansLesFormesEcritesParGitLab() {
+        assertThat(MergeCommitMessageParser.squashReference("Titre (grp/proj!12)\n\nDescription")).contains(
+                new MergeCommitMessageParser.MergeReference(12, "grp/proj"));
+        assertThat(MergeCommitMessageParser.squashReference("Titre\n\nSee merge request grp/proj!12")).contains(
+                new MergeCommitMessageParser.MergeReference(12, "grp/proj"));
+        assertThat(MergeCommitMessageParser.squashReference("PASS-43 régression de !153 corrigée")).isEmpty();
+        assertThat(MergeCommitMessageParser.squashReference("PASS-43 corrige grp/proj!153")).isEmpty();
+        assertThat(MergeCommitMessageParser.squashReference("Revert \"Titre (grp/proj!12)\"\n\nThis reverts merge request !12")).isEmpty();
+        assertThat(MergeCommitMessageParser.squashReference("Description\n\nTitre (grp/proj!12)")).isEmpty(); // pas sur le sujet
+    }
+
+    @Test
+    void suffixeDeTitreRetireEnTempsLineaire() {
         assertThat(MergeCommitMessageParser.stripReferenceSuffix("Titre (grp/proj!12)")).isEqualTo("Titre");
+        assertThat(MergeCommitMessageParser.stripReferenceSuffix("Titre grp/proj!12")).isEqualTo("Titre");
         assertThat(MergeCommitMessageParser.stripReferenceSuffix("Titre")).isEqualTo("Titre");
+        assertThat(MergeCommitMessageParser.stripReferenceSuffix("Wow!2024 c'est top")).isEqualTo("Wow!2024 c'est top");
+        assertThat(MergeCommitMessageParser.stripReferenceSuffix("(grp/proj!12)")).isEqualTo("(grp/proj!12)");
+        String longSubject = "x".repeat(200_000) + " (grp/proj!12)";
+        assertThat(MergeCommitMessageParser.stripReferenceSuffix(longSubject)).hasSize(200_000);
     }
 
     @Test

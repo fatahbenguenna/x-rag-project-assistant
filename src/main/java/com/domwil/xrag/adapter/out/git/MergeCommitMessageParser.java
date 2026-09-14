@@ -54,11 +54,16 @@ public final class MergeCommitMessageParser {
             "^Merged in (?<src>\\S+) \\(pull request #(?<iid>\\d+)\\)\\s*$");
     private static final Pattern AZURE_HEAD = Pattern.compile(
             "^Merged PR (?<iid>\\d+): (?<title>.+?)\\s*$");
-    /** Référence GitLab : {@code grp/sub/proj!153}, {@code !153}, ou URL {@code /-/merge_requests/153}. */
-    private static final Pattern GITLAB_REFERENCE = Pattern.compile(
-            // chemin complet (au moins un « / ») ou rien du tout : « Wow!2024 » n'est pas une référence
-            "(?:(?<=^)|(?<=[\\s(\\[:]))(?<ref>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)?!(?<iid>\\d{1,7})\\b"
-                    + "|/-/merge_requests/(?<iidUrl>\\d{1,7})\\b");
+    /** Trailer GitLab : {@code See merge request grp/sub/proj!153} (chemin absent sur les anciennes versions). */
+    private static final Pattern SEE_MERGE_REQUEST = Pattern.compile(
+            "(?im)^See merge request (?<ref>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)?!(?<iid>\\d{1,7})\\b");
+    private static final Pattern MERGE_REQUEST_URL = Pattern.compile("/-/merge_requests/(?<iid>\\d{1,7})\\b");
+    /** Référence parenthésée avec chemin complet, telle que {@code %{title} (%{reference})} la produit. */
+    private static final Pattern PARENTHESIZED_REFERENCE = Pattern.compile(
+            "\\((?<ref>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)!(?<iid>\\d{1,7})\\)");
+    /** Référence nue avec chemin complet ({@code grp/proj!153}) — jamais un simple {@code !153} hors trailer. */
+    private static final Pattern BARE_REFERENCE = Pattern.compile(
+            "(?:(?<=^)|(?<=[\\s(\\[:]))(?<ref>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)!(?<iid>\\d{1,7})\\b");
     /** Fusions de synchronisation (git pull, remote-tracking) : jamais des MRs. */
     private static final Pattern SYNC_MERGE = Pattern.compile(
             "^Merge (?:remote-tracking branch|branch '?[^'\\s]+'? of |branches )");
@@ -68,9 +73,7 @@ public final class MergeCommitMessageParser {
                     + "Co-authored-by|Signed-off-by|Change-Id|Reviewed-by|Approved-by|Merged-by|Changelog|"
                     + "Merge-request|This reverts commit)\\b.*",
             Pattern.CASE_INSENSITIVE);
-    /** Suffixe de référence d'un titre de squash : {@code Titre (grp/proj!153)}. */
-    private static final Pattern TITLE_REFERENCE_SUFFIX = Pattern.compile(
-            "\\s*\\(?[A-Za-z0-9_./-]*!\\d{1,7}\\)?\\s*$");
+    private static final Pattern REVERT_SUBJECT = Pattern.compile("^Revert \"");
 
     private MergeCommitMessageParser() {
     }
@@ -130,32 +133,98 @@ public final class MergeCommitMessageParser {
     }
 
     /**
-     * Référence de MR GitLab présente dans un message, quel que soit le nombre de parents :
-     * un commit de squash {@code %{title} (%{reference})} porte ainsi son numéro de MR.
+     * Référence de MR GitLab d'un commit de FUSION, par ordre de fiabilité : trailer
+     * {@code See merge request …}, URL {@code /-/merge_requests/N}, référence parenthésée
+     * {@code (grp/proj!N)}, référence nue avec chemin {@code grp/proj!N}. Un simple {@code !N}
+     * dans le texte (« régression de !153 ») n'est jamais une référence.
      */
     public static Optional<MergeReference> reference(String message) {
         if (message == null) {
             return Optional.empty();
         }
-        Matcher m = GITLAB_REFERENCE.matcher(message.replace("\r\n", "\n"));
-        if (!m.find()) {
-            return Optional.empty();
+        String text = message.replace("\r\n", "\n");
+        Matcher m = SEE_MERGE_REQUEST.matcher(text);
+        if (m.find()) {
+            return Optional.of(toReference(m));
         }
-        if (m.group("iidUrl") != null) {
-            return Optional.of(new MergeReference(Long.parseLong(m.group("iidUrl")), null));
+        m = MERGE_REQUEST_URL.matcher(text);
+        if (m.find()) {
+            return Optional.of(new MergeReference(Long.parseLong(m.group("iid")), null));
         }
-        String ref = m.group("ref");
-        return Optional.of(new MergeReference(Long.parseLong(m.group("iid")),
-                ref == null || ref.isBlank() ? null : ref));
+        m = PARENTHESIZED_REFERENCE.matcher(text);
+        if (m.find()) {
+            return Optional.of(toReference(m));
+        }
+        m = BARE_REFERENCE.matcher(text);
+        if (m.find()) {
+            return Optional.of(toReference(m));
+        }
+        return Optional.empty();
     }
 
-    /** Titre d'un commit de squash sans son suffixe de référence ({@code Titre (grp/proj!153)} → {@code Titre}). */
+    /**
+     * Référence de MR d'un commit de SQUASH (un seul parent) : seules les formes que GitLab
+     * écrit lui-même comptent — {@code (grp/proj!N)} sur la ligne de sujet ({@code %{title}
+     * (%{reference})}) ou le trailer {@code See merge request …} — et jamais sur un revert.
+     * Un commit qui CITE une MR dans son texte n'est pas son commit de squash.
+     */
+    public static Optional<MergeReference> squashReference(String message) {
+        if (message == null || message.isBlank()) {
+            return Optional.empty();
+        }
+        List<String> lines = normalizedLines(message);
+        String subject = lines.getFirst();
+        if (REVERT_SUBJECT.matcher(subject).find()) {
+            return Optional.empty();
+        }
+        Matcher m = PARENTHESIZED_REFERENCE.matcher(subject);
+        if (m.find()) {
+            return Optional.of(toReference(m));
+        }
+        m = SEE_MERGE_REQUEST.matcher(String.join("\n", lines));
+        if (m.find()) {
+            return Optional.of(toReference(m));
+        }
+        return Optional.empty();
+    }
+
+    private static MergeReference toReference(Matcher m) {
+        String ref = m.group("ref");
+        return new MergeReference(Long.parseLong(m.group("iid")), ref == null || ref.isBlank() ? null : ref);
+    }
+
+    /**
+     * Titre d'un commit de squash sans son suffixe de référence ({@code Titre (grp/proj!12)} →
+     * {@code Titre}). Linéaire : pas de regex non ancrée sur un sujet potentiellement long.
+     */
     public static String stripReferenceSuffix(String subject) {
         if (subject == null) {
             return null;
         }
-        String stripped = TITLE_REFERENCE_SUFFIX.matcher(subject).replaceFirst("").strip();
-        return stripped.isEmpty() ? subject.strip() : stripped;
+        String trimmed = subject.strip();
+        int bang = trimmed.lastIndexOf('!');
+        if (bang < 0) {
+            return trimmed;
+        }
+        String tail = trimmed.substring(bang + 1);
+        boolean parenthesized = tail.endsWith(")");
+        String digits = parenthesized ? tail.substring(0, tail.length() - 1) : tail;
+        if (digits.isEmpty() || digits.length() > 7 || !digits.chars().allMatch(Character::isDigit)) {
+            return trimmed;
+        }
+        int start = bang;
+        while (start > 0 && isReferencePathChar(trimmed.charAt(start - 1))) {
+            start--;
+        }
+        if (parenthesized && start > 0 && trimmed.charAt(start - 1) == '(') {
+            start--;
+        }
+        String stripped = trimmed.substring(0, start).strip();
+        return stripped.isEmpty() ? trimmed : stripped;
+    }
+
+    private static boolean isReferencePathChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '.' || c == '-' || c == '/';
     }
 
     /**

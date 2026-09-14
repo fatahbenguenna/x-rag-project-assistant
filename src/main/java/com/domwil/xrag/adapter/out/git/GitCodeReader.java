@@ -7,6 +7,7 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -20,6 +21,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -45,12 +47,18 @@ final class GitCodeReader {
         this.webBaseUrl = webBaseUrl;
     }
 
-    /** @return nombre de documents remis au consommateur */
+    /**
+     * @param alreadyEmitted paths (source) déjà remis au consommateur — en cas de nouvel essai
+     *                       après un objet manquant, aucun document n'est ré-émis
+     * @return nombre de documents remis au consommateur
+     */
     int stream(Repository repository, GitRepositories.LocalRepo repo, String branch, ObjectId head,
-               Consumer<SourceDocument> sink) throws IOException {
+               Set<String> alreadyEmitted, Consumer<SourceDocument> sink) throws IOException {
         int emitted = 0;
         int skipped = 0;
-        try (RevWalk walk = new RevWalk(repository); TreeWalk tree = new TreeWalk(repository)) {
+        try (RevWalk walk = new RevWalk(repository);
+             ObjectReader reader = repository.newObjectReader();
+             TreeWalk tree = new TreeWalk(reader)) {
             RevCommit commit = walk.parseCommit(head);
             tree.addTree(commit.getTree());
             tree.setRecursive(true);
@@ -61,9 +69,13 @@ final class GitCodeReader {
                         || !IndexedCodeFiles.indexable(path)) {
                     continue; // symlinks, sous-modules, extensions non indexées
                 }
+                String documentPath = repo.slug() + "@" + branch + "/" + path;
+                if (alreadyEmitted.contains(documentPath)) {
+                    continue;
+                }
                 ObjectId blobId = tree.getObjectId(0);
-                ObjectLoader loader = repository.open(blobId, Constants.OBJ_BLOB);
-                if (loader.getSize() > maxFileBytes) {
+                ObjectLoader loader = reader.open(blobId, Constants.OBJ_BLOB);
+                if (loader.getSize() > maxFileBytes || loader.isLarge()) {
                     skipped++;
                     continue;
                 }
@@ -72,10 +84,11 @@ final class GitCodeReader {
                     skipped++;
                     continue;
                 }
+                alreadyEmitted.add(documentPath);
                 sink.accept(new SourceDocument(
                         SourceConnector.CODE_SOURCE,
                         repo.slug(),
-                        repo.slug() + "@" + branch + "/" + path,
+                        documentPath,
                         path,
                         decode(bytes),
                         blobUrl(repo, branch, path),

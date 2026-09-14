@@ -88,6 +88,24 @@ class TeamConfigTest {
         assertThat(violations).anySatisfy(v -> assertThat(v.getMessage()).contains("exclusifs"));
     }
 
+    @Test
+    void springBootRefuseLeDemarrageAvecLesDeuxTransports() {
+        var runner = new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+                .withUserConfiguration(PropertiesOnly.class)
+                .withPropertyValues("team=t", "llm.provider=ollama", "llm.model=m",
+                        "sources.gitlab.base-url=https://gitlab.example.com", "sources.gitlab.group=grp");
+
+        runner.withPropertyValues("sources.git.root=/repos").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().hasMessageContaining("exclusifs");
+        });
+        runner.run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @org.springframework.boot.context.properties.EnableConfigurationProperties(TeamConfig.class)
+    static class PropertiesOnly {
+    }
+
     private static TeamConfig bind(String path) throws IOException {
         var propertySource = new YamlPropertySourceLoader()
                 .load("team-config", new FileSystemResource(path))

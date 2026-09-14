@@ -42,7 +42,7 @@ final class GitRepositories {
             "/etc", "/var", "/usr", "/opt", "/app", "/config");
     /** {@code git@host:grp/proj.git}, {@code https://host/grp/proj.git}, {@code ssh://git@host:2222/grp/proj} */
     private static final Pattern REMOTE_URL = Pattern.compile(
-            "^(?:(?<scheme>[a-z+]+)://(?:[^@/]+@)?(?<host>[^:/]+)(?::\\d+)?/|(?:[^@]+@)?(?<sshHost>[^:/]+):)(?<path>.+?)(?:\\.git)?/?$");
+            "^(?:(?<scheme>[a-z+]+)://(?:[^@/]+@)?(?<host>[^:/]+)(?::(?<port>\\d+))?/|(?:[^@]+@)?(?<sshHost>[^:/]+):)(?<path>.+?)(?:\\.git)?/?$");
 
     /**
      * @param slug         nom technique du projet (dernier segment du chemin distant, sans
@@ -53,7 +53,7 @@ final class GitRepositories {
      * @param directory    dossier du clone (worktree) ou du dépôt bare
      * @param lastFetchAt  date du dernier fetch (mtime de FETCH_HEAD) ou null
      */
-    record LocalRepo(String slug, String fullPath, String webOrigin, Path directory, boolean bare,
+    record LocalRepo(String slug, String fullPath, String webOrigin, Path directory, Path gitDir, boolean bare,
                      boolean shallow, Instant lastFetchAt) {
     }
 
@@ -73,18 +73,18 @@ final class GitRepositories {
         }
         var repos = new ArrayList<LocalRepo>();
         if (!explicit.isEmpty()) {
+            // Périmètre explicite = contrat : une entrée absente ou illisible est une erreur de
+            // configuration (fail-closed), jamais un dépôt silencieusement ignoré dont les MRs
+            // ouvertes seraient ensuite réconciliées comme disparues.
             for (String sub : explicit) {
                 Path candidate = realRoot.resolve(sub).normalize();
                 if (!Files.isDirectory(candidate) || !candidate.toRealPath().startsWith(realRoot)) {
-                    log.warn("sources.git.repos : « {} » absent ou hors de la racine {} — ignoré", sub, realRoot);
-                    continue;
+                    throw new IllegalStateException("sources.git.repos : « " + sub + " » absent ou hors de la racine "
+                            + realRoot + " — corriger la liste ou monter le dépôt");
                 }
-                Optional<LocalRepo> repo = asRepository(realRoot, candidate.toRealPath(), remote);
-                if (repo.isPresent()) {
-                    repos.add(repo.get());
-                } else {
-                    log.warn("sources.git.repos : « {} » n'est pas un dépôt git (ni clone, ni bare) — ignoré", sub);
-                }
+                repos.add(asRepository(realRoot, candidate.toRealPath(), remote).orElseThrow(() ->
+                        new IllegalStateException("sources.git.repos : « " + sub
+                                + " » n'est pas un dépôt git (ni clone de travail, ni bare)")));
             }
             return repos;
         }
@@ -118,6 +118,7 @@ final class GitRepositories {
         }
         Path dotGit = dir.resolve(".git");
         boolean workTree = Files.isDirectory(dotGit);
+        Path gitDir = workTree ? dotGit : dir;
         boolean bare = false;
         if (Files.isRegularFile(dotGit)) {
             // worktree lié / sous-module : « gitdir: <chemin> » — un chemin absolu de l'hôte
@@ -129,6 +130,7 @@ final class GitRepositories {
                 return Optional.empty();
             }
             workTree = true;
+            gitDir = linked.get();
         }
         if (!workTree) {
             bare = RepositoryCache.FileKey.isGitRepository(dir.toFile(), FS.DETECTED);
@@ -136,16 +138,18 @@ final class GitRepositories {
         if (!workTree && !bare) {
             return Optional.empty();
         }
-        String relative = root.relativize(dir).toString().replace('\\', '/');
         String dirName = dir.getFileName().toString();
         if (bare && dirName.endsWith(".git")) {
             dirName = dirName.substring(0, dirName.length() - 4);
+        }
+        String relative = root.equals(dir) ? dirName : root.relativize(dir).toString().replace('\\', '/');
+        if (bare && relative.endsWith(".git")) {
             relative = relative.substring(0, relative.length() - 4);
         }
         String slug = dirName;
         String fullPath = relative;
         String webOrigin = null;
-        try (Repository repository = open(new LocalRepo(dirName, relative, null, dir, bare, false, null))) {
+        try (Repository repository = open(new LocalRepo(dirName, relative, null, dir, gitDir, bare, false, null))) {
             Optional<RemoteCoordinates> coordinates = remoteCoordinates(repository.getConfig(), remote);
             if (coordinates.isPresent()) {
                 slug = coordinates.get().slug();
@@ -167,10 +171,10 @@ final class GitRepositories {
             }
             Path fetchHead = repository.getDirectory().toPath().resolve("FETCH_HEAD");
             Instant lastFetch = Files.exists(fetchHead) ? Files.getLastModifiedTime(fetchHead).toInstant() : null;
-            return Optional.of(new LocalRepo(slug, fullPath, webOrigin, dir, bare, shallow, lastFetch));
+            return Optional.of(new LocalRepo(slug, fullPath, webOrigin, dir, gitDir, bare, shallow, lastFetch));
         } catch (IOException e) {
-            log.warn("{} : dépôt illisible ({}) — ignoré", dir, e.getMessage());
-            return Optional.empty();
+            // fail-closed : un dépôt présent mais illisible fait échouer la sync (statut visible)
+            throw new IllegalStateException(dir + " : dépôt illisible (" + e.getMessage() + ")", e);
         }
     }
 
@@ -201,6 +205,11 @@ final class GitRepositories {
     }
 
     static Optional<RemoteCoordinates> parseRemoteUrl(String url) {
+        // query / fragment (token ?private_token=…) : jamais dans un chemin, un log ou une URL
+        int cut = indexOfAny(url, '?', '#');
+        if (cut >= 0) {
+            url = url.substring(0, cut);
+        }
         // remote local (file://, chemin absolu, lettre de lecteur) : seul le slug a un sens
         if (url.startsWith("file://") || url.startsWith("/") || url.startsWith(".") || url.matches("^[A-Za-z]:[\\\\/].*")) {
             String trimmed = url.replaceAll("[/\\\\]+$", "");
@@ -224,19 +233,29 @@ final class GitRepositories {
         String slug = path.substring(path.lastIndexOf('/') + 1);
         String host = m.group("host") != null ? m.group("host") : m.group("sshHost");
         String scheme = m.group("scheme");
+        String port = m.group("port");
+        // un port n'a de sens pour le web qu'en http(s) : le 2222 d'un ssh:// n'est pas celui de l'UI
+        boolean web = "http".equals(scheme) || "https".equals(scheme);
         String webOrigin = host == null || "file".equals(scheme) ? null
-                : ("http".equals(scheme) ? "http://" : "https://") + host;
+                : ("http".equals(scheme) ? "http://" : "https://") + host + (web && port != null ? ":" + port : "");
         return Optional.of(new RemoteCoordinates(slug, path, webOrigin));
+    }
+
+    private static int indexOfAny(String text, char a, char b) {
+        int i = text.indexOf(a);
+        int j = text.indexOf(b);
+        return i < 0 ? j : j < 0 ? i : Math.min(i, j);
     }
 
     /** Ouverture lecture seule ; à fermer par l'appelant (try-with-resources). */
     static Repository open(LocalRepo repo) throws IOException {
-        var builder = new FileRepositoryBuilder().setMustExist(true);
+        // gitDir explicite (résolu à la découverte) : jamais de remontée vers un dossier parent si
+        // le clone a disparu entre-temps (findGitDir chercherait plus haut)
+        var builder = new FileRepositoryBuilder().setMustExist(true).setGitDir(repo.gitDir().toFile());
         if (repo.bare()) {
-            builder.setGitDir(repo.directory().toFile()).setBare();
+            builder.setBare();
         } else {
-            // findGitDir gère le dossier .git ET le fichier .git (« gitdir: … » des worktrees)
-            builder.findGitDir(repo.directory().toFile());
+            builder.setWorkTree(repo.directory().toFile());
         }
         return builder.build();
     }

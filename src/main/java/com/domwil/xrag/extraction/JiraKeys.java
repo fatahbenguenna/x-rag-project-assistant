@@ -20,25 +20,33 @@ public final class JiraKeys {
     private JiraKeys() {
     }
 
+    /** Regex générique (majuscules strictes), comportement historique des extracteurs Confluence/Jira/MR. */
     public static Set<String> in(String text) {
-        return in(text, List.of());
+        return collect(text, KEY, false);
     }
 
     /**
-     * Variante bornée aux projets Jira connus : détection INSENSIBLE à la casse ({@code pass-12}
-     * dans une branche ou un commit → {@code PASS-12}) et sans faux positifs ({@code SHA-256},
-     * {@code UTF-8}). Liste vide = regex générique (majuscules strictes).
+     * Variante pour les textes de COMMITS (mode dépôts git locaux) : bornée aux projets Jira
+     * connus — détection INSENSIBLE à la casse ({@code pass-12} dans une branche ou un commit →
+     * {@code PASS-12}), aucun faux positif. Sans projet connu : regex générique privée des
+     * préfixes techniques fréquents dans les commits ({@code SHA-256}, {@code UTF-8}) —
+     * la variante {@link #in(String)} des autres sources n'est pas affectée (un projet Jira
+     * nommé {@code PCI} ou {@code ISO} y reste détecté).
      */
     public static Set<String> in(String text, Collection<String> projectKeys) {
+        Pattern pattern = patternFor(projectKeys);
+        return collect(text, pattern, pattern == KEY);
+    }
+
+    private static Set<String> collect(String text, Pattern pattern, boolean dropTechnicalPrefixes) {
         if (text == null || text.isBlank()) {
             return Set.of();
         }
         var keys = new LinkedHashSet<String>();
-        Matcher matcher = patternFor(projectKeys).matcher(text);
-        boolean generic = matcher.pattern() == KEY;
+        Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             String key = matcher.group(1).toUpperCase(Locale.ROOT);
-            if (generic && TECHNICAL_PREFIXES.contains(key.substring(0, key.indexOf('-')))) {
+            if (dropTechnicalPrefixes && TECHNICAL_PREFIXES.contains(key.substring(0, key.indexOf('-')))) {
                 continue;
             }
             keys.add(key);

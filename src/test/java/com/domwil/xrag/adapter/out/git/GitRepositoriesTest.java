@@ -27,6 +27,10 @@ class GitRepositoriesTest {
         assertThat(http.webOrigin()).isEqualTo("http://gitlab.interne");
         assertThat(http.path()).isEqualTo("grp/proj");
 
+        var port = GitRepositories.parseRemoteUrl("https://gitlab.interne:8443/grp/proj.git?private_token=secret#x").orElseThrow();
+        assertThat(port.webOrigin()).isEqualTo("https://gitlab.interne:8443"); // port web conservé
+        assertThat(port.path()).isEqualTo("grp/proj");                        // query/fragment (token) jamais repris
+
         var file = GitRepositories.parseRemoteUrl("file:///home/dev/upstream/fps-pos.git").orElseThrow();
         assertThat(file.slug()).isEqualTo("fps-pos");
         assertThat(file.path()).isNull();

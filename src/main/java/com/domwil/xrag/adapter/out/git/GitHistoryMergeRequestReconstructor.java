@@ -9,6 +9,7 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevSort;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
@@ -79,11 +80,19 @@ final class GitHistoryMergeRequestReconstructor {
     }
 
     /**
+     * @param mergeRequests MRs reconstituées (filtrées par {@code since} pour les fusionnées)
+     * @param openIds       ids de TOUTES les MRs ouvertes présumées du dépôt (jamais filtrées) —
+     *                      l'instantané autoritaire de la réconciliation
+     */
+    record Result(List<MergeRequestMeta> mergeRequests, Set<String> openIds) {
+    }
+
+    /**
      * @param targetHeads branches cibles → tête, dans l'ordre configuré (LinkedHashMap)
      * @param since       borne basse (déjà élargie de la fenêtre de re-balayage) ; {@code null} = tout
      */
-    List<MergeRequestMeta> reconstruct(Repository repository, GitRepositories.LocalRepo repo,
-                                       Map<String, ObjectId> targetHeads, Instant since) throws IOException {
+    Result reconstruct(Repository repository, GitRepositories.LocalRepo repo,
+                       Map<String, ObjectId> targetHeads, Instant since) throws IOException {
         var result = new LinkedHashMap<String, MergeRequestMeta>();
         var covered = new HashSet<ObjectId>();
         var mergedSourceBranches = new HashMap<String, Instant>(); // branche source → date de fusion
@@ -108,24 +117,9 @@ final class GitHistoryMergeRequestReconstructor {
         }
         log.info("Dépôt {} : {} MR(s) reconstituée(s) — {} fusion(s), {} série(s)/squash, {} branche(s) ouverte(s)",
                 repo.slug(), result.size(), merges, linear, open);
-        return List.copyOf(result.values());
-    }
-
-    /** Ids des MRs ouvertes (voie 3) seuls — instantané autoritaire pour la réconciliation. */
-    Set<String> openBranchIds(Repository repository, GitRepositories.LocalRepo repo,
-                              Map<String, ObjectId> targetHeads) throws IOException {
-        if (!options.fromOpenBranches()) {
-            return Set.of();
-        }
-        var ids = new LinkedHashSet<String>();
-        try (RevWalk walk = new RevWalk(repository)) {
-            var targets = parseTargets(walk, targetHeads);
-            for (Ref ref : GitRepositories.branchRefs(repository, options.remote())) {
-                Optional<OpenBranch> candidate = openBranch(repository, walk, ref, targets, targetHeads.keySet());
-                candidate.ifPresent(b -> ids.add(openBranchId(repo, b.name())));
-            }
-        }
-        return ids;
+        var openIds = new LinkedHashSet<String>();
+        result.values().stream().filter(mr -> "opened".equals(mr.state())).map(MergeRequestMeta::id).forEach(openIds::add);
+        return new Result(List.copyOf(result.values()), openIds);
     }
 
     // ---- voie 1 : commits de fusion ------------------------------------------------
@@ -145,11 +139,18 @@ final class GitHistoryMergeRequestReconstructor {
                 continue; // fusion de synchronisation ou format inconnu : pas une MR
             }
             var p = parsed.get();
+            boolean sourceIsTarget = p.sourceBranch() != null && targetBranches.contains(p.sourceBranch());
+            if (sourceIsTarget && p.iid() <= 0) {
+                // « Merge branch 'main' into feature/x » (synchronisation d'une cible dans une
+                // feature, vue depuis main une fois la feature fusionnée) : pas une MR, et ses
+                // « commits de branche » sont ceux de main — ne surtout pas les couvrir
+                continue;
+            }
             Instant mergedAt = committerInstant(merge);
             if (p.sourceBranch() != null) {
                 mergedSourceBranches.merge(p.sourceBranch(), mergedAt, (a, b) -> a.isAfter(b) ? a : b);
             }
-            boolean integration = p.sourceBranch() != null && targetBranches.contains(p.sourceBranch())
+            boolean integration = sourceIsTarget
                     && (p.targetBranch() == null || targetBranches.contains(p.targetBranch()));
             List<RevCommit> branchCommits = List.of();
             if (!integration) {
@@ -214,9 +215,10 @@ final class GitHistoryMergeRequestReconstructor {
             if (commit.getParentCount() >= 2 || covered.contains(commit.getId())) {
                 continue; // fusions et commits déjà portés par une MR : ne cassent pas la série
             }
-            // Squash GitLab avec « %{title} (%{reference}) » : 1 commit = 1 MR numérotée
+            // Squash GitLab avec « %{title} (%{reference}) » : 1 commit = 1 MR numérotée —
+            // seules les formes écrites par GitLab comptent (un commit qui CITE !153 n'est pas !153)
             Optional<MergeCommitMessageParser.MergeReference> reference = options.fromMergeCommits()
-                    ? MergeCommitMessageParser.reference(commit.getFullMessage()) : Optional.empty();
+                    ? MergeCommitMessageParser.squashReference(commit.getFullMessage()) : Optional.empty();
             if (reference.isPresent()) {
                 count += flushRun(repository, repo, branch, run, runKey, since, result);
                 run.clear();
@@ -451,6 +453,10 @@ final class GitHistoryMergeRequestReconstructor {
                                                     List<ObjectId> uninteresting) throws IOException {
         var commits = new ArrayList<RevCommit>();
         try (RevWalk walk = new RevWalk(repository)) {
+            // topologique : les commits d'une même branche restent contigus même quand un
+            // « git pull » a entrelacé les dates de deux auteurs (séries par clé Jira)
+            walk.sort(RevSort.TOPO, true);
+            walk.sort(RevSort.COMMIT_TIME_DESC, true);
             walk.markStart(walk.parseCommit(head));
             for (ObjectId other : uninteresting) {
                 walk.markUninteresting(walk.parseCommit(other));

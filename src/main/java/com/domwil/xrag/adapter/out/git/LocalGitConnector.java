@@ -6,6 +6,7 @@ import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.MergeRequestConnector;
 import com.domwil.xrag.domain.port.SourceConnector;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.errors.RevWalkException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.slf4j.Logger;
@@ -17,12 +18,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -54,6 +57,8 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
     private final Path root;
     private final GitCodeReader codeReader;
     private final GitHistoryMergeRequestReconstructor reconstructor;
+    /** Instantané des MRs ouvertes de la dernière récolte COMPLÈTE réussie ; null sinon. */
+    private final AtomicReference<Set<String>> lastOpenSnapshot = new AtomicReference<>();
 
     public LocalGitConnector(TeamConfig.Git config) {
         this(config, List.of());
@@ -91,53 +96,52 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
     @Override
     public void streamChangedSince(Instant since, Consumer<SourceDocument> sink) {
         for (GitRepositories.LocalRepo repo : repositories()) {
+            var emitted = new HashSet<String>(); // partagé entre les essais : jamais de document ré-émis
             withRetry(repo, "lecture du code", repository -> {
                 for (var head : branchHeads(repository, repo).entrySet()) {
-                    int emitted = codeReader.stream(repository, repo, head.getKey(), head.getValue(), sink);
-                    log.info("Dépôt {} @{} : {} fichier(s) indexable(s)", repo.slug(), head.getKey(), emitted);
+                    int count = codeReader.stream(repository, repo, head.getKey(), head.getValue(), emitted, sink);
+                    log.info("Dépôt {} @{} : {} fichier(s) indexable(s)", repo.slug(), head.getKey(), count);
                 }
             });
         }
     }
 
+    /**
+     * Fail-closed : toute erreur remonte (sync en ERREUR, rien de réconcilié). En cas de succès,
+     * l'instantané des MRs ouvertes de TOUS les dépôts est mémorisé pour {@link #currentlyOpenIds()}.
+     */
     @Override
     public List<MergeRequestMeta> fetchUpdatedAfter(Instant since) {
+        lastOpenSnapshot.set(null);
         Instant effectiveSince = since == null ? null
                 : since.minus(config.mergeRequests().rescanDays(), ChronoUnit.DAYS);
         var mergeRequests = new ArrayList<MergeRequestMeta>();
+        var openIds = new LinkedHashSet<String>();
         for (GitRepositories.LocalRepo repo : repositories()) {
-            withRetry(repo, "reconstitution des MRs", repository -> {
-                Map<String, ObjectId> heads = branchHeads(repository, repo);
-                if (!heads.isEmpty()) {
-                    mergeRequests.addAll(reconstructor.reconstruct(repository, repo, heads, effectiveSince));
-                }
-            });
+            var contribution = new AtomicReference<GitHistoryMergeRequestReconstructor.Result>();
+            withRetry(repo, "reconstitution des MRs", repository -> contribution.set(
+                    reconstructor.reconstruct(repository, repo, branchHeads(repository, repo), effectiveSince)));
+            // contribution ajoutée APRÈS succès : un nouvel essai ne duplique rien
+            mergeRequests.addAll(contribution.get().mergeRequests());
+            openIds.addAll(contribution.get().openIds());
+        }
+        if (config.mergeRequests().fromOpenBranches()) {
+            lastOpenSnapshot.set(Set.copyOf(openIds));
         }
         return mergeRequests;
     }
 
     /**
-     * Instantané autoritaire des MRs ouvertes (branches non fusionnées) recalculé à la demande ;
-     * vide si un dépôt est illisible — jamais de réconciliation sur un instantané partiel.
+     * Instantané autoritaire des MRs ouvertes, tel que produit par la dernière récolte complète
+     * réussie ({@link #fetchUpdatedAfter}) — le MÊME que celui dont les lignes viennent d'être
+     * upsertées (une branche squash-mergée exclue de la récolte l'est aussi de l'instantané).
+     * Vide tant qu'aucune récolte n'a abouti, et vide quand {@code from-open-branches} est
+     * désactivé (le connecteur n'énumère alors rien : ce n'est pas un instantané, la table
+     * est laissée telle quelle) : jamais de réconciliation sur un état partiel.
      */
     @Override
     public Optional<Set<String>> currentlyOpenIds() {
-        var ids = new LinkedHashSet<String>();
-        try {
-            for (GitRepositories.LocalRepo repo : repositories()) {
-                withRetry(repo, "inventaire des branches ouvertes", repository -> {
-                    Map<String, ObjectId> heads = branchHeads(repository, repo);
-                    if (!heads.isEmpty()) {
-                        ids.addAll(reconstructor.openBranchIds(repository, repo, heads));
-                    }
-                });
-            }
-        } catch (RuntimeException e) {
-            log.warn("Inventaire des branches ouvertes incomplet ({}) : réconciliation des MRs ouvertes sautée",
-                    e.getMessage());
-            return Optional.empty();
-        }
-        return Optional.of(ids);
+        return Optional.ofNullable(lastOpenSnapshot.get());
     }
 
     private interface RepositoryAction {
@@ -150,21 +154,31 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
      */
     private void withRetry(GitRepositories.LocalRepo repo, String what, RepositoryAction action) {
         for (int attempt = 1; ; attempt++) {
+            MissingObjectException missing;
             try (Repository repository = GitRepositories.open(repo)) {
                 action.run(repository);
                 return;
             } catch (MissingObjectException e) {
-                if (attempt >= 2) {
+                missing = e;
+            } catch (RevWalkException e) {
+                // l'itération d'un RevWalk enveloppe l'IOException dans une RuntimeException
+                if (e.getCause() instanceof MissingObjectException cause) {
+                    missing = cause;
+                } else {
                     throw new IllegalStateException("Dépôt " + repo.directory() + " : " + what
-                            + " en échec après réouverture (objet manquant " + e.getObjectId().name()
-                            + " — git gc/fetch concurrent ? clone partiel ?)", e);
+                            + " en échec (" + e.getCause() + ")", e);
                 }
-                log.warn("Dépôt {} : objet manquant pendant la {} ({}) — réouverture et nouvel essai",
-                        repo.directory(), what, e.getMessage());
             } catch (IOException e) {
                 throw new IllegalStateException("Dépôt " + repo.directory() + " : " + what
                         + " en échec (" + e.getMessage() + ")", e);
             }
+            if (attempt >= 2) {
+                throw new IllegalStateException("Dépôt " + repo.directory() + " : " + what
+                        + " en échec après réouverture (objet manquant " + missing.getObjectId().name()
+                        + " — git gc/fetch concurrent ? clone partiel ?)", missing);
+            }
+            log.warn("Dépôt {} : objet manquant pendant la {} ({}) — réouverture et nouvel essai",
+                    repo.directory(), what, missing.getMessage());
         }
     }
 
@@ -178,6 +192,17 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
         if (repos.isEmpty()) {
             throw new IllegalStateException("Aucun dépôt git sous " + root
                     + " (clones de travail ou dépôts bare, profondeur 4) — vérifier GIT_REPOS_DIR et sources.git.repos");
+        }
+        // Le slug identifie les chunks (slug@branche/fichier) et les MRs (git:slug:…) : deux dépôts
+        // de même slug (fork dans un autre groupe) s'écraseraient mutuellement à chaque sync.
+        var bySlug = new java.util.HashMap<String, GitRepositories.LocalRepo>();
+        for (GitRepositories.LocalRepo repo : repos) {
+            GitRepositories.LocalRepo other = bySlug.putIfAbsent(repo.slug(), repo);
+            if (other != null) {
+                throw new IllegalStateException("Deux dépôts résolvent le même projet « " + repo.slug() + "» : "
+                        + other.directory() + " et " + repo.directory()
+                        + " — retirer le doublon (fork ?) de GIT_REPOS_DIR ou restreindre sources.git.repos");
+            }
         }
         Instant now = Instant.now();
         for (GitRepositories.LocalRepo repo : repos) {
@@ -196,12 +221,14 @@ public class LocalGitConnector implements SourceConnector, MergeRequestConnector
                     .ifPresent(head -> heads.put(branch, head));
         }
         if (heads.isEmpty()) {
-            log.warn("Dépôt {} : aucune des branches {} n'existe (ni refs/remotes/{}/…, ni refs/heads/…) — "
-                    + "un « git fetch » est-il fait sur ce clone ?", repo.slug(), config.branches(), config.remote());
-        } else {
-            log.info("Dépôt {} ({}, {}) : branches {}", repo.slug(), repo.fullPath(),
-                    repo.bare() ? "bare" : "clone", heads.keySet());
+            // fail-closed : un dépôt sans aucune branche cible ne peut être ni indexé ni inventorié
+            // (ses MRs ouvertes seraient réconciliées comme disparues) — config à corriger
+            throw new IllegalStateException("Dépôt " + repo.slug() + " : aucune des branches " + config.branches()
+                    + " n'existe (ni refs/remotes/" + config.remote() + "/…, ni refs/heads/…) — aligner "
+                    + "sources.git.branches, fetcher le clone, ou retirer ce dépôt de sources.git.repos");
         }
+        log.info("Dépôt {} ({}, {}) : branches {}", repo.slug(), repo.fullPath(),
+                repo.bare() ? "bare" : "clone", heads.keySet());
         return heads;
     }
 }
