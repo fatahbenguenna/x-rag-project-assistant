@@ -22,6 +22,7 @@ sur volumétrie réelle).
 | `scenario.md` | **Vérité terrain** : graphe attendu, pièges, questions canoniques, déroulé |
 | `team-config.testbed.yml` | Config d'instance pointant sur le groupe sandbox |
 | `setup-gitlab.sh` | Groupe + 3 projets + 3 MRs GitLab, étapes `increment`/`prune` |
+| `setup-git-local.sh` | **Variante sans GitLab** : mêmes projets et MRs en dépôts git **locaux** (miroirs bare lus par `sources.git`), étapes `increment`/`prune`/`merge-mr1` |
 | `setup-confluence.sh` | Page parente « XRAG-SANDBOX » + les 5 pages (requiert pandoc) |
 | `setup-jira.sh` | Création des issues `XRAGSAND-1..4` + liens entre issues |
 
@@ -39,6 +40,7 @@ Tout le sandbox s'identifie d'un coup d'œil sous le nom **XRAG-SANDBOX**
 | Où | Nom d'affichage | Clé / chemin technique |
 |---|---|---|
 | GitLab | XRAG-SANDBOX | sous-groupe `x-rag-sandbox` |
+| Dépôts git locaux (variante sans GitLab) | — | dossier `<dossier>/x-rag-sandbox/<projet>.git` (miroirs bare) |
 | Confluence | XRAG-SANDBOX | **page parente** « XRAG-SANDBOX » dans un space existant où vous pouvez écrire |
 | Jira | XRAG-SANDBOX | projet **`XRAGSAND`** (issues `XRAGSAND-1..4`) |
 
@@ -78,6 +80,41 @@ garde des tokens de lecture.
   suffit pour indexer ; le webhook n'a pas besoin de token GitLab (il utilise le
   secret `GITLAB_WEBHOOK_TOKEN` entrant).
 
+### Sans GitLab : dépôts git locaux (`setup-git-local.sh`)
+
+Pour valider le mode `sources.git` (politique cyber interdisant le token GitLab —
+RUNBOOK §3) : **aucun token, aucun réseau**, seulement `git` sur le poste. Le script
+reconstruit le même sandbox en **miroirs bare** `<dossier>/x-rag-sandbox/fake-orders.git`,
+`fake-billing.git`, `fake-front.git`, avec l'historique que le connecteur sait
+reconstituer en MRs :
+
+| MR du scénario | Forme git | Ce que le connecteur en fait |
+|---|---|---|
+| MR-1 « XRAGSAND-1 Suivi de commande » (fake-orders) | branche `feat/xragsand-1-suivi-commande` **non fusionnée**, 1 commit daté du 06/01 | MR **ouverte présumée** `git-branch:fake-orders:feat/xragsand-1-suivi-commande` — la plus vieille |
+| MR-2 « Refonte du calcul de TVA » (fake-billing) | branche `feat/refonte-tva` non fusionnée, 1 commit du 07/01, sans clé Jira | MR ouverte présumée `git-branch:fake-billing:feat/refonte-tva` |
+| MR-3 « XRAGSAND-3 Export CSV des factures » (fake-billing) | commit de fusion `--no-ff` du 08/01 au **format GitLab exact** (« Merge branch '…' into 'main' » / titre / « See merge request passerelle/x-rag-sandbox/fake-billing!3 ») | MR **merged** `git:fake-billing:3`, **iid 3** |
+
+Dates de commit fixes et croissantes (`GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`) : l'ancienneté
+des MRs est reproductible. Commits signés désactivés et identité imposée
+(`git -c commit.gpgsign=false -c user.name=testbed -c user.email=testbed@example.com`) :
+l'auteur reconstitué est `testbed` quelle que soit la config du poste. Chaque miroir porte
+un remote `origin` **factice** (`https://gitlab.example.com/passerelle/x-rag-sandbox/<projet>.git`,
+modifiable via `SANDBOX_REMOTE_BASE`) : c'est de cette URL que l'API déduit le slug
+(`fake-orders` → alias `fakeorders`), le chemin complet et les liens `…/-/blob/…`,
+`…/-/merge_requests/3` — elle n'est jamais contactée. Conséquences :
+
+- **ne pas lancer `scripts/git-fetch-all.sh`** sur ce dossier (le remote n'existe pas) :
+  les étapes `increment`/`prune`/`merge-mr1` poussent directement dans les miroirs ;
+- le préflight `check-connections.sh` émet un WARN « jamais fetché (pas de FETCH_HEAD) »
+  sur chaque miroir : **attendu**, l'API ne s'en sert que pour l'alerte « miroir périmé » ;
+- pas de webhook : après chaque étape, `POST /api/admin/sync?source=gitlab-code` puis
+  `?source=gitlab-mr` (header `X-Admin-Token`), ou le nightly.
+
+`<dossier>` est la valeur à mettre dans `GIT_REPOS_DIR` (`.env`) : chemin **absolu**,
+dossier **dédié** (le script refuse `/tmp`, `/home`… comme l'API), dans le FS WSL. Côté
+instance : `team-config.testbed.yml` contient le bloc `sources.git` en commentaire, à
+substituer au bloc `gitlab:` (les deux sont exclusifs).
+
 ### Confluence (`setup-confluence.sh`)
 
 - **Data Center/Server** : PAT (profil → *Personal Access Tokens*), envoyé en
@@ -109,6 +146,10 @@ export GITLAB_TOKEN=glpat-...          # scope api, Owner/Maintainer du parent
 export GITLAB_PARENT_GROUP=passerelle  # le sous-groupe x-rag-sandbox sera créé dessous
 ./testbed/setup-gitlab.sh init
 
+# 1 bis. SANS GitLab (mode sources.git) : mêmes projets et MRs en miroirs bare locaux
+./testbed/setup-git-local.sh ~/xrag-testbed init   # puis .env : GIT_REPOS_DIR=/home/<vous>/xrag-testbed
+#   -> team-config.yml : bloc sources.git (commenté dans team-config.testbed.yml) à la place de gitlab:
+
 # 2. Confluence : page parente « XRAG-SANDBOX » + 5 pages dans un space existant
 export CONFLUENCE_BASE_URL=https://confluence.example.com
 export CONFLUENCE_TOKEN=...            # PAT DC (ou API token + CONFLUENCE_USER en Cloud)
@@ -128,6 +169,10 @@ docker compose up -d && ./bootstrap.sh               # indexation : quelques min
 # 6. Étapes incrémentales, à votre rythme
 ./testbed/setup-gitlab.sh increment   # nouvelle relation → webhook/nightly
 ./testbed/setup-gitlab.sh prune       # suppression → purge des orphelins
+#    Variante git local (pas de webhook : POST /api/admin/sync?source=gitlab-code|gitlab-mr après chaque étape)
+./testbed/setup-git-local.sh ~/xrag-testbed increment
+./testbed/setup-git-local.sh ~/xrag-testbed prune
+./testbed/setup-git-local.sh ~/xrag-testbed merge-mr1   # étape D : MR-1 fusionnée, branche supprimée
 ```
 
 Les questions canoniques de `scenario.md` peuvent être reprises dans la config

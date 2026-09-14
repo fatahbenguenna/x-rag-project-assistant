@@ -12,7 +12,7 @@ git@gitlab.example.com:passerelle/fps-pos.git
 # HTTPS (credentials fournis par Git Credential Manager ou le SSO, jamais dans ce fichier) :
 https://gitlab.example.com/passerelle/fps-kds.git
 
-# Sous-groupe : chemin distant passerelle/commons/fps-shared-lib. La découverte automatique
-# s'arrête à la profondeur 4 (root/groupe/sous-groupe/projet) : si le miroir est créé plus profond,
-# le lister explicitement dans sources.git.repos (chemin relatif à root).
+# Sous-groupe : chemin distant passerelle/commons/fps-shared-lib -> miroir <dossier>/passerelle/commons/fps-shared-lib.git.
+# La découverte automatique de l'API s'arrête à la profondeur 4 (jusqu'à root/grp/sous-grp/sous-sous-grp/projet.git) :
+# au-delà, lister le miroir explicitement dans sources.git.repos (chemin relatif à root).
 git@gitlab.example.com:passerelle/commons/fps-shared-lib.git

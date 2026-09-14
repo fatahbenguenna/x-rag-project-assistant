@@ -16,10 +16,25 @@ sources:
     # pouvez écrire (recommandé : votre space personnel "~login"). Les pages du
     # testbed y sont créées sous la page parente « XRAG-SANDBOX ».
     spaces: ["~votre-login"]
+  # Code + MRs : UN SEUL des deux blocs gitlab: / git: (exclusifs, refus au démarrage sinon).
   gitlab:
     base-url: https://gitlab.example.com
     group: passerelle/x-rag-sandbox             # créé par setup-gitlab.sh init
     branches: [main]
+  # ALTERNATIVE sans GitLab (testbed/setup-git-local.sh <dossier> init) : miroirs bare locaux
+  # <dossier>/x-rag-sandbox/<projet>.git montés en lecture seule via GIT_REPOS_DIR=<dossier>
+  # (.env, chemin absolu). Supprimer le bloc gitlab: ci-dessus et décommenter celui-ci.
+  # Les slugs (fake-orders, fake-billing, fake-front) viennent du remote factice posé par le
+  # script et sont résolus par la même table d'alias que le mode API.
+  # git:
+  #   root: /repos                              # dossier DANS le conteneur (= GIT_REPOS_DIR monté)
+  #   repos: []                                 # vide = découverte auto (x-rag-sandbox/<projet>.git)
+  #   branches: [main]
+  #   merge-requests:
+  #     from-merge-commits: true                # MR-3 : commit de fusion GitLab -> git:fake-billing:3 (merged)
+  #     from-linear-commits: true               # sans effet ici : aucun commit direct ne porte de clé Jira
+  #     from-open-branches: true                # MR-1, MR-2 : branches non fusionnées -> git-branch:… (opened)
+  #     jira-projects: []                       # défaut : sources.jira.projects (XRAGSAND, insensible à la casse)
   jira:
     base-url: https://jira.example.com         # projet factice — voir testbed/jira/
     projects: [XRAGSAND]

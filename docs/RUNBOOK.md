@@ -82,8 +82,8 @@ Puis dans `team-config.yml`, **remplacer** le bloc `sources.gitlab` par `sources
 sources:
   git:
     root: /repos                    # dossier DANS le conteneur (= GIT_REPOS_DIR monté)
-    repos: []                       # vide = découverte auto (profondeur 4 : root/projet ou
-                                    # root/groupe/projet) ; en prod, lister les sous-chemins
+    repos: []                       # vide = découverte auto (profondeur 4 : de root/projet à
+                                    # root/grp/sous-grp/sous-sous-grp/projet) ; en prod, lister les sous-chemins
     branches: [main, develop]       # code indexé + historique fouillé pour les MRs
     remote: origin                  # refs/remotes/origin/<b> lues en priorité, repli refs/heads/<b>
     # web-base-url: https://gitlab.example.com   # liens cliquables ; défaut : déduite du remote
@@ -264,7 +264,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Qualité du graphe | 🐧 | `curl -s localhost:8080/api/admin/graph-quality` (verdict + trous éventuels) |
 | Enrichissement LLM du graphe | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/enrich?max=150'` (async, bilan dans les logs) — rattache les docs sans nœud ; ajouter `&sources=confluence,jira` pour topic-enrichir des sources déjà rattachées. Auto dans le batch nocturne si `extractors.llm: true` |
 | Ré-indexer une source | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
-| Rafraîchir code + MRs (mode git) | 🐧 | `./scripts/git-fetch-all.sh --sync` — fetch de tous les miroirs de `GIT_REPOS_DIR` puis `POST sync?source=gitlab-code` et `POST sync?source=gitlab-mr` (charge `.env` lui-même : `ADMIN_TOKEN`, `API_URL`). À la main : les deux `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=…'` après un fetch. Détail et planification : §8 |
+| Rafraîchir code + MRs (mode git) | 🐧 | `./scripts/git-fetch-all.sh --sync` — fetch de tous les miroirs de `GIT_REPOS_DIR` puis `POST sync?source=gitlab-code` et `POST sync?source=gitlab-mr` (charge `.env` lui-même : `ADMIN_TOKEN` ; `API_URL` optionnel, défaut `http://localhost:8080`). À la main : les deux `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=…'` après un fetch. Détail et planification : §8 |
 | Batch à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` |
 | Éval du retrieval (recall@k) | 🐧 | `curl -s localhost:8080/api/admin/eval` — rejoue les questions canoniques `eval.cases` de team-config.yml, sans LLM ; rapport aussi dans la notification nocturne |
 | Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) |
@@ -282,7 +282,8 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 - **Fraîcheur en mode git local** (`sources.git`) : le webhook n'a pas de sens (GitLab
   n'est pas joignable, et l'application ne fetch jamais) — c'est **vous** qui rafraîchissez
   les miroirs. **Une seule commande à planifier** : `scripts/git-fetch-all.sh --sync`
-  (verrou `flock` sur le dossier ; pour chaque dépôt sous `GIT_REPOS_DIR` :
+  (verrou `flock` sur `<dossier>/.fetch.lock` — un passage à la fois ; pour chaque dépôt sous
+  `GIT_REPOS_DIR`, profondeur 4 comme l'API :
   `git remote update --prune` (bare) ou `git fetch --all --prune` (clone) sous `timeout 300`,
   puis `gc --auto` non détaché ; horodatage `.last-fetch` et journal `fetch.log` dans le
   dossier ; code retour ≠ 0 si un dépôt échoue ; `--sync` charge `.env` puis enchaîne
@@ -296,8 +297,10 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
   Planification (01:15 avant le batch de 02:00, puis toutes les 2 h en journée) :
   - 🪟 **Windows (Docker dans WSL)** — tâche planifiée qui lance le script dans la distro :
     ```powershell
-    # Une fois, PowerShell : à l'ouverture de session, puis toutes les 2 h
-    schtasks /Create /TN "xrag-git-fetch" /SC ONLOGON /RI 120 /DU 24:00 /TR "wsl.exe -d Ubuntu -u <vous> -- bash -lc 'cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync'"
+    # Une fois, PowerShell. Rattrapage à l'ouverture de session (schtasks n'accepte pas /RI avec ONLOGON) :
+    schtasks /Create /TN "xrag-git-fetch-logon" /SC ONLOGON /TR "wsl.exe -d Ubuntu -u <vous> -- bash -lc 'cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync'"
+    # Toutes les 2 h en journée :
+    schtasks /Create /TN "xrag-git-fetch" /SC HOURLY /MO 2 /ST 09:00 /TR "wsl.exe -d Ubuntu -u <vous> -- bash -lc 'cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync'"
     # + le passage nocturne avant le batch de 02:00 (poste allumé)
     schtasks /Create /TN "xrag-git-fetch-nuit" /SC DAILY /ST 01:15 /TR "wsl.exe -d Ubuntu -u <vous> -- bash -lc 'cd ~/x-rag-project-assistant && ./scripts/git-fetch-all.sh --sync'"
     ```
@@ -338,7 +341,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Pas de batch cette nuit | Poste/WSL éteint à 02:00 | Rattrapage manuel (§8) |
 | Mode git : sync `gitlab-code` en `ERREUR sources.git.root introuvable dans le conteneur` | Volume non monté : `GIT_REPOS_DIR` vide, relatif, ou chemin inexistant côté WSL | `GIT_REPOS_DIR=/home/<vous>/xrag-repos` (absolu) dans `.env`, puis `docker compose up -d rag-api` ; vérifier `docker compose exec -T rag-api ls /repos` |
 | Mode git : `sources.git.root = /… exposerait tout le système de fichiers` | `GIT_REPOS_DIR` pointe une racine refusée (`/`, `/home`, `/root`, `/mnt`, `/mnt/c`, `/tmp`, `/etc`, `/var`, `/usr`, `/opt`, `/app`, `/config`) | Monter un dossier **dédié** aux miroirs (§3) |
-| Mode git : `Aucun dépôt git sous /repos` | Dossier vide, miroirs à plus de 2 niveaux, symlinks (ignorés), ou `sources.git.repos` liste des sous-chemins absents (WARN « absent ou hors de la racine ») | `./scripts/git-mirror-init.sh repos.list ~/xrag-repos` ; respecter `root/projet` ou `root/groupe/projet` ; pas de liens symboliques |
+| Mode git : `Aucun dépôt git sous /repos` | Dossier vide, miroirs à plus de 4 niveaux sous la racine, symlinks (ignorés), ou `sources.git.repos` liste des sous-chemins absents (WARN « absent ou hors de la racine ») | `./scripts/git-mirror-init.sh repos.list ~/xrag-repos` (miroirs à ≤ 4 niveaux : `root/projet.git` … `root/grp/sous-grp/sous-sous-grp/projet.git`, sinon les lister dans `sources.git.repos`) ; pas de liens symboliques |
 | Mode git : WARN `aucune des branches [main, develop] n'existe (ni refs/remotes/…, ni refs/heads/…)` — dépôt sans code ni MR | Branche cible absente du dépôt (nommée autrement : `master`, `trunk`), ou clone jamais fetché | Aligner `sources.git.branches` sur les branches réelles, ou `git fetch` du clone ; le préflight §5 le signale dépôt par dépôt |
 | Mode git : `clone PARTIEL (--filter) non supporté` | Miroir créé avec `--filter=blob:none` (promisor) : JGit ne peut pas récupérer les objets manquants | Recloner en miroir **complet** (`git clone --mirror <url>`) |
 | Mode git : WARN `clone SHALLOW (--depth) — historique tronqué` | Miroir créé avec `--depth` : MRs anciennes irrécupérables | `git -C ~/xrag-repos/<grp>/<proj>.git fetch --unshallow` |

@@ -31,6 +31,7 @@ getvar() { eval "printf '%s' \"\${$1:-}\""; }   # lecture d'une variable par nom
 pass=0; fail=0
 ok() { printf '  [OK] %s\n' "$1"; pass=$((pass + 1)); }
 ko() { printf '  [KO] %s — %s\n' "$1" "$2"; fail=$((fail + 1)); }
+warn() { printf '  [!!] %s — %s\n' "$1" "$2"; }   # signalé, ne compte pas comme KO
 
 # --- Vérification HTTP générique -------------------------------------------
 http_json() { # http_json <label> <motif attendu> <url> [args curl...]
@@ -132,6 +133,102 @@ if [ -n "$gitlab_url" ]; then
   http_json "GitLab groupe $group" '"id"' \
     "$gitlab_url/api/v4/groups/$(printf '%s' "$group" | sed 's|/|%2F|g')" \
     --header "PRIVATE-TOKEN: ${GITLAB_TOKEN:-}"
+fi
+
+# --- Git local (sources.git : miroirs du poste montés sur /repos:ro, lus via JGit) ------
+# Reproduit les contrôles faits par l'API à l'ouverture des dépôts (racine dangereuse,
+# découverte profondeur 4, branches cibles, clone partiel/shallow, âge du dernier fetch)
+# AVANT le premier sync — côté hôte, avec le binaire git du poste.
+git_root=$(yaml_value git root)
+if [ -n "$git_root" ]; then
+  git_dir="${GIT_REPOS_DIR:-}"
+  git_remote=$(yaml_value git remote); git_remote=${git_remote:-origin}
+  git_branches=$(yaml_value git branches | tr ',' ' '); git_branches=${git_branches:-main}
+  git_repos=$(yaml_value git repos | tr ',' ' ')
+  [ "$git_root" = /repos ] || warn "sources.git.root = $git_root" "docker-compose monte GIT_REPOS_DIR sur /repos"
+  if [ -z "$git_dir" ]; then
+    ko "GIT_REPOS_DIR" "non renseigné dans .env — Docker monterait ./repos VIDE (scripts/git-mirror-init.sh puis .env)"
+  elif grep -qE '^GIT_REPOS_DIR=~' .env 2> /dev/null; then
+    ko "GIT_REPOS_DIR=~…" "docker compose n'interprète pas « ~ » : chemin ABSOLU Linux (ex. /home/<vous>/xrag-repos)"
+  elif [ "${git_dir#/}" = "$git_dir" ]; then
+    ko "GIT_REPOS_DIR=$git_dir" "chemin relatif — docker-compose exige un chemin absolu"
+  elif [ ! -d "$git_dir" ]; then
+    ko "GIT_REPOS_DIR=$git_dir" "dossier introuvable — scripts/git-mirror-init.sh repos.list $git_dir"
+  else
+    git_real=$(readlink -f "$git_dir")
+    case "$git_dir" in /mnt/*) warn "GIT_REPOS_DIR sous /mnt" "DrvFs lent et fragile — préférer le FS WSL (ex. ~/xrag-repos)" ;; esac
+    git_forbidden=false
+    for forbidden in / /home /root /mnt /mnt/c /tmp /etc /var /usr /opt /app /config; do
+      [ "$git_real" = "$forbidden" ] && git_forbidden=true
+    done
+    if [ "$git_forbidden" = true ]; then
+      ko "GIT_REPOS_DIR=$git_real" "racine refusée par l'API (exposerait tout le FS au conteneur) — dossier DÉDIÉ aux miroirs"
+    else
+      ok "GIT_REPOS_DIR=$git_dir (absolu, dédié)"
+      # Dépôt git ? clone de travail (.git dossier ou fichier « gitdir: ») ou bare — règle de l'API
+      git_kind() { # git_kind <dossier> — affiche clone | bare | rien
+        if [ -d "$1/.git" ] || [ -f "$1/.git" ]; then echo clone
+        elif [ "$(git --git-dir="$1" rev-parse --is-bare-repository 2> /dev/null)" = true ]; then echo bare; fi
+      }
+      git_found=()
+      if [ -n "$git_repos" ]; then                    # sources.git.repos : périmètre explicite
+        for sub in $git_repos; do
+          if [ -d "$git_real/$sub" ] && [ -n "$(git_kind "$git_real/$sub")" ]; then git_found+=("$git_real/$sub")
+          else ko "sources.git.repos « $sub »" "absent ou pas un dépôt git sous $git_dir — ignoré par l'API"; fi
+        done
+      else                                            # découverte auto profondeur 4 (GitRepositories.MAX_DEPTH)
+        git_scan() { # git_scan <dossier> <profondeur> — symlinks et dossiers cachés ignorés, un dépôt n'est pas parcouru
+          local d
+          for d in "$1"/*/; do
+            d=${d%/}
+            [ -d "$d" ] && [ ! -L "$d" ] || continue
+            if [ -n "$(git_kind "$d")" ]; then git_found+=("$d")
+            elif [ "$2" -lt 4 ]; then git_scan "$d" $(($2 + 1)); fi
+          done
+        }
+        git_scan "$git_real" 1
+      fi
+      if [ ${#git_found[@]} -eq 0 ]; then
+        ko "Dépôts git sous $git_dir" "aucun (profondeur 4 : <projet>.git … <grp>/<sous-grp>/<sous-sous-grp>/<projet>.git, pas de symlink) — scripts/git-mirror-init.sh"
+      fi
+      for d in ${git_found[@]+"${git_found[@]}"}; do
+        rel=${d#"$git_real"/}; kind=$(git_kind "$d"); repo_ok=true
+        gitdir=$(git -C "$d" rev-parse --absolute-git-dir 2> /dev/null || echo "$d")
+        for b in $git_branches; do
+          git -C "$d" rev-parse --verify -q "refs/remotes/$git_remote/$b" > /dev/null 2>&1 \
+            || git -C "$d" rev-parse --verify -q "refs/heads/$b" > /dev/null 2>&1 \
+            || { ko "Dépôt $rel : branche $b" "ni refs/remotes/$git_remote/$b ni refs/heads/$b — branche absente ou jamais fetchée"; repo_ok=false; }
+        done
+        if [ "$(git -C "$d" config --get "remote.$git_remote.mirror" 2> /dev/null)" != true ] \
+           && [ -z "$(git -C "$d" config --get "remote.$git_remote.fetch" 2> /dev/null)" ]; then
+          ko "Dépôt $rel : remote $git_remote" "sans refspec de fetch (clone --bare au lieu de --mirror ?) — git-fetch-all.sh ne le rafraîchira pas"
+          repo_ok=false
+        fi
+        if [ "$(git -C "$d" config --get extensions.partialclone 2> /dev/null)" = true ] \
+           || [ -n "$(git -C "$d" config --get "remote.$git_remote.promisor" 2> /dev/null)" ]; then
+          ko "Dépôt $rel" "clone PARTIEL (--filter) refusé par l'API (JGit ne récupère pas les objets manquants) — recloner en miroir complet"
+          repo_ok=false
+        fi
+        [ -f "$gitdir/shallow" ] && warn "Dépôt $rel" "clone SHALLOW (--depth) : historique tronqué, MRs anciennes irrécupérables — git fetch --unshallow"
+        fetch_age=""
+        if [ -f "$gitdir/FETCH_HEAD" ]; then
+          fetch_age=$(( ($(date +%s) - $(stat -c %Y "$gitdir/FETCH_HEAD")) / 3600 ))
+          [ "$fetch_age" -ge 24 ] && warn "Dépôt $rel" "dernier fetch il y a $fetch_age h — miroir périmé ? scripts/git-fetch-all.sh --sync (planification : RUNBOOK §8)"
+        else
+          warn "Dépôt $rel" "jamais fetché depuis le clone (pas de FETCH_HEAD) — scripts/git-fetch-all.sh"
+        fi
+        [ "$repo_ok" = true ] && ok "Dépôt $rel ($kind, branches : $(echo $git_branches)${fetch_age:+, fetch il y a $fetch_age h})"
+      done
+      # Montage prouvé depuis le conteneur (seulement si la pile tourne)
+      if command -v docker > /dev/null && docker ps --format '{{.Names}}' 2> /dev/null | grep -q '^xrag-api$'; then
+        mounted=$(docker compose exec -T rag-api ls "$git_root" 2> /dev/null | wc -l)
+        if [ "$mounted" -gt 0 ]; then ok "Montage $git_root dans rag-api ($mounted entrée(s))"
+        else ko "Montage $git_root dans rag-api" "vide — GIT_REPOS_DIR changé après démarrage ? docker compose up -d rag-api (recrée le conteneur)"; fi
+      else
+        echo "  [--] Montage $git_root non vérifié (conteneur xrag-api non démarré)"
+      fi
+    fi
+  fi
 fi
 
 # --- Confluence -----------------------------------------------------------------
