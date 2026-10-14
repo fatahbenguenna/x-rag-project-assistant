@@ -67,6 +67,40 @@ class JavaRelationExtractorTest {
     }
 
     @Test
+    void parsesModernJavaSyntax() {
+        // Records, switch-expressions, text blocks, pattern matching : rejetés par le niveau
+        // par défaut de JavaParser (Java 11), ce qui faisait perdre toutes les relations du fichier.
+        String java = """
+                package com.example;
+
+                @FeignClient(name = "fps-pos-service")
+                interface FpsPosClient { String fetch(); }
+
+                record OrderEvent(String id, String status) { }
+
+                class OrderListener {
+                    @KafkaListener(topics = "orders")
+                    public void onMessage(Object message) {
+                        if (message instanceof OrderEvent event) {
+                            String label = switch (event.status()) {
+                                case "NEW" -> "nouvelle";
+                                default -> "autre";
+                            };
+                            String sql = \"""
+                                    SELECT * FROM orders
+                                    \""";
+                        }
+                    }
+                }
+                """;
+        ExtractionResult result = extractor.extract(doc(java));
+
+        assertThat(result.edges()).contains(
+                GraphEdge.of("project:fpskds", "project:fpspos", GraphEdge.Types.CALLS_API),
+                GraphEdge.of("project:fpskds", "topic:orders", GraphEdge.Types.CONSUMES));
+    }
+
+    @Test
     void unparseableSourceYieldsNothing() {
         assertThat(extractor.extract(doc("not java at all {{{")).isEmpty()).isTrue();
     }

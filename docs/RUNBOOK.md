@@ -177,7 +177,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Ré-indexer une source | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
 | Batch à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` |
 | Éval du retrieval (recall@k) | 🐧 | `curl -s localhost:8080/api/admin/eval` — rejoue les questions canoniques `eval.cases` de team-config.yml, sans LLM ; rapport aussi dans la notification nocturne |
-| Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) |
+| Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) — HTTP 503 si une question échoue |
 | Latences vs cibles | 🐧 | `./scripts/measure-latency.sh` |
 
 ## 8. Exploitation courante

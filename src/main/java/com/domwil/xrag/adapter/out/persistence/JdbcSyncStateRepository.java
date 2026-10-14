@@ -34,4 +34,9 @@ public class JdbcSyncStateRepository implements SyncStateRepository {
                         """,
                 source, Timestamp.from(syncedAt), status);
     }
+
+    @Override
+    public void recordFailure(String source, String status) {
+        jdbc.update("UPDATE sync_state SET last_status = ? WHERE source = ?", status, source);
+    }
 }

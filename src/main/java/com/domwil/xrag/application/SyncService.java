@@ -83,7 +83,8 @@ public class SyncService {
             log.info("Sync {} : {}/{} documents (ré)indexés depuis {}",
                     source, indexed, documents.size(), since == null ? "toujours" : since);
         } catch (Exception e) {
-            syncState.record(source, startedAt, "ERREUR " + e.getMessage());
+            // Curseur inchangé : la prochaine sync reprend depuis la dernière réussie.
+            syncState.recordFailure(source, "ERREUR " + e.getMessage());
             progress.finishSource(source, "ERREUR " + e.getMessage(), 0, 0);
             log.error("Sync {} en échec — l'index précédent reste servi", source, e);
         }
@@ -107,7 +108,7 @@ public class SyncService {
             progress.finishSource(MR_SOURCE, "OK", mrs.size(), mrs.size());
             log.info("Sync MRs : {} mises à jour depuis {}", mrs.size(), since == null ? "toujours" : since);
         } catch (Exception e) {
-            syncState.record(MR_SOURCE, startedAt, "ERREUR " + e.getMessage());
+            syncState.recordFailure(MR_SOURCE, "ERREUR " + e.getMessage());
             progress.finishSource(MR_SOURCE, "ERREUR " + e.getMessage(), 0, 0);
             log.error("Sync MRs en échec", e);
         }

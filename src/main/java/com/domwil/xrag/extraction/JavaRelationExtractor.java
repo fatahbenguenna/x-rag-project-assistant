@@ -7,6 +7,8 @@ import com.domwil.xrag.domain.model.GraphNode;
 import com.domwil.xrag.domain.model.SourceDocument;
 import com.domwil.xrag.domain.port.RelationExtractor;
 import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.ParserConfiguration.LanguageLevel;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
@@ -32,7 +34,14 @@ import java.util.Set;
 public class JavaRelationExtractor implements RelationExtractor {
 
     private final AliasResolver aliases;
-    private final JavaParser parser = new JavaParser();
+    /**
+     * Niveau explicite : le défaut de JavaParser (POPULAR = Java 11) rejette records,
+     * switch-expressions, text blocks et pattern matching — 46 fichiers sur 135 de ce
+     * dépôt — et un fichier rejeté ne produit aucune relation. Java 21 est le plus haut
+     * niveau supporté par JavaParser 3.26.
+     */
+    private final JavaParser parser = new JavaParser(
+            new ParserConfiguration().setLanguageLevel(LanguageLevel.JAVA_21));
 
     public JavaRelationExtractor(AliasResolver aliases) {
         this.aliases = aliases;
