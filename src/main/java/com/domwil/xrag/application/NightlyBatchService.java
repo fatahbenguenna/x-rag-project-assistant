@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -84,7 +85,7 @@ public class NightlyBatchService {
         }
 
         try {
-            syncService.syncAll(false);
+            List<String> syncAnomalies = syncService.syncAll(false);
 
             int purged = maintenance.purgeOrphanNodes();
             log.info("Réconciliation : {} nœuds orphelins purgés", purged);
@@ -102,13 +103,23 @@ public class NightlyBatchService {
             log.info("Batch nocturne terminé en {} min — stats : {}", minutes, stats);
             String report = "Stats : " + stats + "\nÉval graphe : " + graphVerdict
                     + (evalReport == null ? "" : "\n" + evalReport)
+                    + (syncAnomalies.isEmpty() ? "" : "\nSources en anomalie :\n" + String.join("\n", syncAnomalies))
                     + "\nSmoke test :\n" + smoke.summary();
-            if (smoke.passed()) {
-                notifier.info("Batch nocturne terminé en " + minutes + " min", report);
+            String title = "Batch nocturne terminé en " + minutes + " min";
+            // Une source en erreur ou des documents sautés (PARTIEL : ils ne reviendront qu'à leur
+            // prochaine modification), ou des réponses KO : une notification « terminé »
+            // ordinaire passerait inaperçue.
+            var problems = new ArrayList<String>();
+            if (!syncAnomalies.isEmpty()) {
+                problems.add(syncAnomalies.size() + " source(s) en anomalie");
+            }
+            if (!smoke.passed()) {
+                problems.add("smoke test en échec");
+            }
+            if (problems.isEmpty()) {
+                notifier.info(title, report);
             } else {
-                // Index à jour mais réponses KO (Ollama, prompt, retrieval) : l'équipe le verrait
-                // avant nous — une notification « terminé » ordinaire passerait inaperçue.
-                notifier.alert("Batch nocturne terminé en " + minutes + " min — smoke test en échec", report);
+                notifier.alert(title + " — " + String.join(", ", problems), report);
             }
         } catch (Exception e) {
             log.error("ALERTE batch nocturne : échec en cours de batch (upsert only, "

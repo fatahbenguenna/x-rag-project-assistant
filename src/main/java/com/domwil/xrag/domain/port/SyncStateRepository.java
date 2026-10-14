@@ -15,8 +15,8 @@ public interface SyncStateRepository {
      * Sync en échec : enregistre le statut SANS avancer le curseur. Avancer {@code last_sync}
      * sur un échec (401, 410, réseau) faisait sauter la fenêtre manquée à la sync suivante :
      * les documents modifiés entre la dernière sync réussie et l'échec n'étaient jamais
-     * ré-indexés. Sans ligne existante (premier run en échec), rien n'est écrit : la sync
-     * suivante repart de zéro.
+     * ré-indexés. Premier run en échec : la ligne est créée sans curseur (statut visible au
+     * dashboard) et la sync suivante repart de zéro.
      */
     void recordFailure(String source, String status);
 }

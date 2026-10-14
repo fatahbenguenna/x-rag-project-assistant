@@ -37,10 +37,12 @@ class SyncServiceTest {
     private final MergeRequestGraphMapper mrMapper = mock(MergeRequestGraphMapper.class);
     private final GraphRepository graph = mock(GraphRepository.class);
     private final IndexingProgressTracker tracker = new IndexingProgressTracker();
+    private boolean infrastructureUp = true;
 
     private SyncService syncServiceWith(SourceConnector connector) {
         ConnectorRegistry registry = new ConnectorRegistry(List.of(connector), Optional.empty());
-        return new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker);
+        return new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker,
+                () -> infrastructureUp);
     }
 
     private static SourceDocument document(String source, String path) {
@@ -63,7 +65,7 @@ class SyncServiceTest {
         assertThat(snapshot.sources()).hasSize(1);
         SourceProgress progress = snapshot.sources().getFirst();
         assertThat(progress.source()).isEqualTo("confluence");
-        assertThat(progress.status()).isEqualTo("OK");
+        assertThat(progress.status()).isEqualTo("OK (2/2 indexés)");
         assertThat(progress.indexed()).isEqualTo(2);
         assertThat(progress.total()).isEqualTo(2);
         assertThat(progress.finishedAt()).isNotNull();
@@ -127,22 +129,74 @@ class SyncServiceTest {
                 eq("PARTIEL (2/3 indexés, 1 en échec : db/export-utf16.sql)"));
         verify(syncState, never()).recordFailure(anyString(), anyString());
         assertThat(tracker.snapshot().sources().getFirst().indexed()).isEqualTo(2);
+        // Le tracker (prioritaire au dashboard) reçoit le détail, pas seulement « PARTIEL ».
+        assertThat(tracker.snapshot().sources().getFirst().status()).contains("db/export-utf16.sql");
     }
 
     @Test
-    void desEchecsEnRafaleSignalentUnePanneEtGardentLeCurseur() {
+    void desDocumentsIllisiblesContigusNeBloquentPasLaSource() {
         SourceConnector connector = mock(SourceConnector.class);
-        when(connector.source()).thenReturn("confluence");
+        when(connector.source()).thenReturn("gitlab-code");
+        SourceDocument sain = document("gitlab-code", "src/Service.java");
         when(connector.fetchChangedSince(any())).thenReturn(List.of(
-                document("confluence", "p1"), document("confluence", "p2"), document("confluence", "p3"),
-                document("confluence", "p4")));
-        when(ingestion.ingest(any(), any(), anyBoolean())).thenThrow(new IllegalStateException("Ollama HS"));
+                document("gitlab-code", "db/export1.sql"), document("gitlab-code", "db/export2.sql"),
+                document("gitlab-code", "db/export3.sql"), sain));
+        when(ingestion.ingest(any(), any(), anyBoolean())).thenThrow(new IllegalStateException("0x00"));
+        org.mockito.Mockito.doReturn(true).when(ingestion).ingest(eq(sain), any(), anyBoolean());
 
         syncServiceWith(connector).syncAll(false);
 
-        verify(ingestion, times(SyncService.MAX_CONSECUTIVE_FAILURES)).ingest(any(), any(), anyBoolean());
-        verify(syncState, never()).record(eq("confluence"), any(), anyString());
-        verify(syncState).recordFailure(eq("confluence"), contains("Ollama HS"));
+        // Infrastructure saine : les échecs sont propres aux documents, la source avance.
+        verify(ingestion).ingest(eq(sain), any(), anyBoolean());
+        verify(syncState).record(eq("gitlab-code"), any(Instant.class), startsWith("PARTIEL (1/4 indexés, 3 en échec"));
+        verify(syncState, never()).recordFailure(anyString(), anyString());
+    }
+
+    @Test
+    void unePanneEnCoursDeLotGardeLeCurseurEtArreteLaSync() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("gitlab-code");
+        SourceDocument a = document("gitlab-code", "A.java");
+        SourceDocument b = document("gitlab-code", "B.java");
+        SourceDocument c = document("gitlab-code", "C.java");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(a, b, c));
+        when(ingestion.ingest(eq(a), any(), anyBoolean())).thenReturn(true);
+        when(ingestion.ingest(eq(b), any(), anyBoolean())).thenThrow(new IllegalStateException("Connection refused"));
+        infrastructureUp = false;
+
+        syncServiceWith(connector).syncAll(false);
+
+        // Panne d'Ollama : B et C seront repris à la prochaine sync, rien n'est sauté.
+        verify(ingestion, never()).ingest(eq(c), any(), anyBoolean());
+        verify(syncState, never()).record(eq("gitlab-code"), any(), anyString());
+        verify(syncState).recordFailure(eq("gitlab-code"), contains("Connection refused"));
+    }
+
+    @Test
+    void unEchecPassagerEstRattrapeParUnNouvelEssai() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("confluence");
+        SourceDocument page = document("confluence", "page-1");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(page));
+        when(ingestion.ingest(eq(page), any(), anyBoolean()))
+                .thenThrow(new IllegalStateException("Ollama redémarre"))
+                .thenReturn(true);
+
+        syncServiceWith(connector).syncAll(false);
+
+        verify(ingestion, times(2)).ingest(eq(page), any(), anyBoolean());
+        verify(syncState).record(eq("confluence"), any(Instant.class), eq("OK (1/1 indexés)"));
+    }
+
+    @Test
+    void syncAllRenvoieLesSourcesEnAnomalie() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("jira");
+        when(connector.fetchChangedSince(any())).thenThrow(new RuntimeException("401 Unauthorized"));
+
+        List<String> anomalies = syncServiceWith(connector).syncAll(false);
+
+        assertThat(anomalies).containsExactly("jira : ERREUR 401 Unauthorized");
     }
 
     @Test
@@ -166,7 +220,7 @@ class SyncServiceTest {
         when(connector.fetchUpdatedAfter(any())).thenThrow(new RuntimeException("GitLab HS"));
         ConnectorRegistry registry = new ConnectorRegistry(List.of(), Optional.of(connector));
 
-        new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker)
+        new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker, () -> true)
                 .syncMergeRequestsIncremental();
 
         verify(syncState, never()).record(eq(SyncService.MR_SOURCE), any(), anyString());

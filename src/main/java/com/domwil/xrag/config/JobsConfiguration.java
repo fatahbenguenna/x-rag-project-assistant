@@ -82,8 +82,21 @@ public class JobsConfiguration implements SchedulingConfigurer {
     public SyncService syncService(ConnectorRegistry connectors, IngestionService ingestion,
                                    SyncStateRepository syncState, MergeRequestRepository mergeRequests,
                                    MergeRequestGraphMapper mrMapper, GraphRepository graph,
-                                   IndexingProgressTracker progressTracker) {
-        return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph, progressTracker);
+                                   IndexingProgressTracker progressTracker,
+                                   JdbcTemplate jdbc, EmbeddingModel embeddingModel) {
+        return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph, progressTracker,
+                () -> infrastructureUp(jdbc, embeddingModel));
+    }
+
+    /** Sonde de la sync : PostgreSQL et le modèle d'embedding répondent. */
+    static boolean infrastructureUp(JdbcTemplate jdbc, EmbeddingModel embeddingModel) {
+        try {
+            jdbc.queryForObject("SELECT 1", Integer.class);
+            float[] probe = embeddingModel.embed("ping");
+            return probe != null && probe.length > 0;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     @Bean
