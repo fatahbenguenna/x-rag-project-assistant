@@ -7,10 +7,13 @@ import com.domwil.xrag.domain.port.ConnectorRegistry;
 import com.domwil.xrag.domain.port.GraphRepository;
 import com.domwil.xrag.domain.port.MergeRequestConnector;
 import com.domwil.xrag.domain.port.MergeRequestRepository;
+import com.domwil.xrag.domain.port.Notifier;
 import com.domwil.xrag.domain.port.SourceConnector;
 import com.domwil.xrag.domain.port.SyncStateRepository;
 import com.domwil.xrag.extraction.MergeRequestGraphMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.time.Instant;
 import java.util.List;
@@ -37,12 +40,13 @@ class SyncServiceTest {
     private final MergeRequestGraphMapper mrMapper = mock(MergeRequestGraphMapper.class);
     private final GraphRepository graph = mock(GraphRepository.class);
     private final IndexingProgressTracker tracker = new IndexingProgressTracker();
+    private final Notifier notifier = mock(Notifier.class);
     private boolean infrastructureUp = true;
 
     private SyncService syncServiceWith(SourceConnector connector) {
         ConnectorRegistry registry = new ConnectorRegistry(List.of(connector), Optional.empty());
         return new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker,
-                () -> infrastructureUp);
+                () -> infrastructureUp, notifier);
     }
 
     private static SourceDocument document(String source, String path) {
@@ -189,6 +193,73 @@ class SyncServiceTest {
     }
 
     @Test
+    void unDisquePleinEnCoursDeLotEstUnePanneMemeSiLaSondeRepond() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("confluence");
+        SourceDocument p1 = document("confluence", "p1");
+        SourceDocument p2 = document("confluence", "p2");
+        SourceDocument p3 = document("confluence", "p3");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(p1, p2, p3));
+        when(ingestion.ingest(eq(p1), any(), anyBoolean())).thenReturn(true);
+        // SELECT 1 et l'embedding répondent encore, mais aucun INSERT ne passe (SQLState 53100).
+        when(ingestion.ingest(eq(p2), any(), anyBoolean())).thenThrow(
+                new DataAccessResourceFailureException("could not extend file: No space left on device"));
+
+        syncServiceWith(connector).syncAll(false);
+
+        verify(ingestion, never()).ingest(eq(p3), any(), anyBoolean());
+        verify(syncState, never()).record(eq("confluence"), any(), anyString());
+        verify(syncState).recordFailure(eq("confluence"), contains("No space left on device"));
+    }
+
+    @Test
+    void ollamaInjoignableEstUnePanneSansNouvelEssai() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("jira");
+        SourceDocument issue = document("jira", "PASS-1");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(issue, document("jira", "PASS-2")));
+        when(ingestion.ingest(eq(issue), any(), anyBoolean()))
+                .thenThrow(new ResourceAccessException("I/O error on POST http://ollama:11434/api/embed"));
+
+        syncServiceWith(connector).syncAll(false);
+
+        verify(ingestion, times(1)).ingest(any(), any(), anyBoolean());
+        verify(syncState).recordFailure(eq("jira"), contains("ollama:11434"));
+    }
+
+    @Test
+    void desDocumentsInchangesNeMasquentPasUnePanneNonDetectee() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("confluence");
+        SourceDocument inchangee = document("confluence", "index");
+        SourceDocument modifiee = document("confluence", "p1");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(inchangee, modifiee));
+        when(ingestion.ingest(eq(inchangee), any(), anyBoolean())).thenReturn(false);
+        when(ingestion.ingest(eq(modifiee), any(), anyBoolean())).thenThrow(new IllegalStateException("échec inconnu"));
+
+        syncServiceWith(connector).syncAll(false);
+
+        // Aucun document tenté n'a abouti : le curseur reste, la page sera retentée.
+        verify(syncState, never()).record(eq("confluence"), any(), anyString());
+        verify(syncState).recordFailure(eq("confluence"), contains("dernier échec : échec inconnu"));
+    }
+
+    @Test
+    void uneSyncALaDemandeAvecDesDocumentsIgnoresAlerte() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("gitlab-code");
+        SourceDocument illisible = document("gitlab-code", "db/x.sql");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(document("gitlab-code", "A.java"), illisible));
+        when(ingestion.ingest(any(), any(), anyBoolean())).thenReturn(true);
+        when(ingestion.ingest(eq(illisible), any(), anyBoolean())).thenThrow(new IllegalStateException("0x00"));
+
+        // Chemin du webhook GitLab : le batch nocturne suivant ne reverra pas db/x.sql.
+        syncServiceWith(connector).syncSource("gitlab-code", false);
+
+        verify(notifier).alert(contains("documents ignorés"), contains("db/x.sql"));
+    }
+
+    @Test
     void syncAllRenvoieLesSourcesEnAnomalie() {
         SourceConnector connector = mock(SourceConnector.class);
         when(connector.source()).thenReturn("jira");
@@ -220,7 +291,7 @@ class SyncServiceTest {
         when(connector.fetchUpdatedAfter(any())).thenThrow(new RuntimeException("GitLab HS"));
         ConnectorRegistry registry = new ConnectorRegistry(List.of(), Optional.of(connector));
 
-        new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker, () -> true)
+        new SyncService(registry, ingestion, syncState, mergeRequests, mrMapper, graph, tracker, () -> true, notifier)
                 .syncMergeRequestsIncremental();
 
         verify(syncState, never()).record(eq(SyncService.MR_SOURCE), any(), anyString());

@@ -6,11 +6,15 @@ import com.domwil.xrag.domain.port.ConnectorRegistry;
 import com.domwil.xrag.domain.port.GraphRepository;
 import com.domwil.xrag.domain.port.MergeRequestConnector;
 import com.domwil.xrag.domain.port.MergeRequestRepository;
+import com.domwil.xrag.domain.port.Notifier;
 import com.domwil.xrag.domain.port.SourceConnector;
 import com.domwil.xrag.domain.port.SyncStateRepository;
 import com.domwil.xrag.extraction.MergeRequestGraphMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,6 +31,7 @@ public class SyncService {
 
     private static final Logger log = LoggerFactory.getLogger(SyncService.class);
     public static final String MR_SOURCE = "gitlab-mr";
+    private static final String PARTIAL = "PARTIEL";
 
     private final ConnectorRegistry connectors;
     private final IngestionService ingestion;
@@ -36,16 +41,20 @@ public class SyncService {
     private final GraphRepository graph;
     private final IndexingProgressTracker progress;
     private final BooleanSupplier infrastructureUp;
+    private final Notifier notifier;
 
     /**
      * @param infrastructureUp sonde Ollama + PostgreSQL, interrogée quand un document échoue :
      *                         elle distingue un document illisible (sauté) d'une panne (sync
      *                         abandonnée, curseur conservé)
+     * @param notifier         alerte des documents sautés lors d'une sync à la demande (webhook,
+     *                         admin) : le batch nocturne suivant ne les verrait plus
      */
     public SyncService(ConnectorRegistry connectors, IngestionService ingestion,
                        SyncStateRepository syncState, MergeRequestRepository mergeRequests,
                        MergeRequestGraphMapper mrMapper, GraphRepository graph,
-                       IndexingProgressTracker progress, BooleanSupplier infrastructureUp) {
+                       IndexingProgressTracker progress, BooleanSupplier infrastructureUp,
+                       Notifier notifier) {
         this.connectors = connectors;
         this.ingestion = ingestion;
         this.syncState = syncState;
@@ -54,6 +63,7 @@ public class SyncService {
         this.graph = graph;
         this.progress = progress;
         this.infrastructureUp = infrastructureUp;
+        this.notifier = notifier;
     }
 
     /** @return les statuts des sources qui ne sont pas OK (« source : statut »), vide si tout va bien */
@@ -78,10 +88,21 @@ public class SyncService {
         }
     }
 
+    /**
+     * Sync à la demande d'une source (webhook GitLab, admin). Des documents sautés y sont
+     * alertés tout de suite : le curseur a avancé, le batch nocturne ne les reverra pas.
+     */
     public void syncSource(String source, boolean full) {
         connectors.documentConnectors().stream()
                 .filter(c -> c.source().equals(source))
-                .forEach(c -> syncSource(c, full));
+                .forEach(c -> {
+                    String status = syncSource(c, full);
+                    if (status.startsWith(PARTIAL)) {
+                        notifier.alert("Sync " + source + " : documents ignorés", status
+                                + "\nIls ne seront ré-indexés qu'à leur prochaine modification "
+                                + "(ou via POST /api/admin/sync?source=" + source + "&full=true).");
+                    }
+                });
     }
 
     private String syncSource(SourceConnector connector, boolean full) {
@@ -93,25 +114,30 @@ public class SyncService {
             var documents = connector.fetchChangedSince(since);
             int indexed = 0;
             var failed = new ArrayList<String>();
+            DocumentFailure lastFailure = null;
             for (var doc : documents) {
                 try {
                     if (ingestWithRetry(doc, full)) {
                         indexed++;
                     }
                 } catch (DocumentFailure e) {
-                    // Document illisible (U+0000, entrée refusée par le modèle…) avec une
+                    // Document illisible (entrée refusée par le modèle, contrainte SQL…) avec une
                     // infrastructure saine : on le saute. Le curseur figé sur lui le ferait
                     // échouer à chaque sync et bloquerait toute la source.
                     failed.add(doc.path());
+                    lastFailure = e;
                     log.warn("Sync {} : document {} ignoré ({})", source, doc.path(), e.getMessage());
                 }
             }
-            if (!failed.isEmpty() && failed.size() == documents.size()) {
-                throw new IllegalStateException("aucun des %d documents n'a pu être indexé".formatted(failed.size()));
+            // Aucun document réellement tenté n'a abouti (les inchangés et les vides ne comptent
+            // pas) : panne non détectée plutôt que documents illisibles, curseur conservé.
+            if (indexed == 0 && lastFailure != null) {
+                throw new IllegalStateException("aucun des %d documents tentés n'a pu être indexé, dernier échec : %s"
+                        .formatted(failed.size(), lastFailure.getMessage()), lastFailure);
             }
             String status = failed.isEmpty()
                     ? "OK (%d/%d indexés)".formatted(indexed, documents.size())
-                    : "PARTIEL (%d/%d indexés, %d en échec : %s)".formatted(indexed, documents.size(),
+                    : PARTIAL + " (%d/%d indexés, %d en échec : %s)".formatted(indexed, documents.size(),
                             failed.size(), String.join(", ", failed.subList(0, Math.min(5, failed.size()))));
             syncState.record(source, startedAt, status);
             progress.finishSource(source, status, indexed, documents.size());
@@ -130,10 +156,11 @@ public class SyncService {
     }
 
     /**
-     * Un échec d'ingestion déclenche la sonde : infrastructure KO = panne, l'exception remonte
-     * et la sync est abandonnée (curseur conservé, les documents restants seront repris) ;
-     * infrastructure OK = nouvel essai (un redémarrage d'Ollama peut avoir coupé le premier),
-     * puis {@link DocumentFailure} si le document échoue encore.
+     * Un échec d'ingestion est une panne (l'exception remonte, la sync est abandonnée, curseur
+     * conservé, les documents restants seront repris) quand son type le dit — connexion,
+     * disque plein, timeout, que la sonde SELECT 1 + embedding ne voit pas toujours — ou quand
+     * la sonde échoue. Sinon : nouvel essai (un redémarrage d'Ollama peut avoir coupé le
+     * premier), puis {@link DocumentFailure} si le document échoue encore.
      *
      * @param full ré-indexation forcée (récupère les changements d'extraction, ex. commentaires,
      *             même si la version source n'a pas bougé)
@@ -142,15 +169,34 @@ public class SyncService {
         try {
             return ingestion.ingest(doc, Set.of(), full);
         } catch (RuntimeException first) {
-            if (!infrastructureUp.getAsBoolean()) {
+            if (isInfrastructureFailure(first) || !infrastructureUp.getAsBoolean()) {
                 throw first;
             }
             try {
                 return ingestion.ingest(doc, Set.of(), full);
             } catch (RuntimeException second) {
+                if (isInfrastructureFailure(second)) {
+                    throw second;
+                }
                 throw new DocumentFailure(second);
             }
         }
+    }
+
+    /**
+     * Pannes reconnues à leur type : PostgreSQL injoignable, disque plein (SQLState 53100),
+     * timeout ou verrou ({@link DataAccessResourceFailureException},
+     * {@link TransientDataAccessException}), Ollama injoignable ({@link ResourceAccessException}).
+     */
+    static boolean isInfrastructureFailure(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (t instanceof DataAccessResourceFailureException
+                    || t instanceof TransientDataAccessException
+                    || t instanceof ResourceAccessException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Échec propre à un document, infrastructure saine. */

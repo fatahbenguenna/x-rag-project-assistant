@@ -83,9 +83,9 @@ public class JobsConfiguration implements SchedulingConfigurer {
                                    SyncStateRepository syncState, MergeRequestRepository mergeRequests,
                                    MergeRequestGraphMapper mrMapper, GraphRepository graph,
                                    IndexingProgressTracker progressTracker,
-                                   JdbcTemplate jdbc, EmbeddingModel embeddingModel) {
+                                   JdbcTemplate jdbc, EmbeddingModel embeddingModel, Notifier notifier) {
         return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph, progressTracker,
-                () -> infrastructureUp(jdbc, embeddingModel));
+                () -> infrastructureUp(jdbc, embeddingModel), notifier);
     }
 
     /** Sonde de la sync : PostgreSQL et le modèle d'embedding répondent. */
