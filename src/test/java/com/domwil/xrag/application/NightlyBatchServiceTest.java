@@ -94,6 +94,23 @@ class NightlyBatchServiceTest {
     }
 
     @Test
+    void smokeTestEnEchecAlerteEnFinDeBatch() {
+        when(jdbc.queryForObject(eq("SELECT 1"), eq(Integer.class))).thenReturn(1);
+        when(embeddings.embed(anyString())).thenReturn(new float[]{1f});
+        when(smoke.run()).thenReturn(
+                new SmokeTestService.Report("KO (réponse vide) — Explique-moi le projet fps-suite", false));
+        when(graphQuality.evaluate()).thenReturn(new GraphQualityService.Report(
+                new com.domwil.xrag.domain.model.GraphQualityMetrics(10, 20, 0, 100, 90, java.util.List.of()),
+                java.util.List.of()));
+        when(maintenance.stats()).thenReturn(java.util.Map.of("chunks", (Object) 42L));
+
+        batch.run();
+
+        verify(notifier).alert(contains("smoke test en échec"), contains("KO (réponse vide)"));
+        verify(notifier, never()).info(anyString(), anyString());
+    }
+
+    @Test
     void echecEnCoursDeBatchAlerteSansCasserLIndex() {
         when(jdbc.queryForObject(eq("SELECT 1"), eq(Integer.class))).thenReturn(1);
         when(embeddings.embed(anyString())).thenReturn(new float[]{1f});

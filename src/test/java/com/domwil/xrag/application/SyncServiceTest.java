@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -109,7 +110,58 @@ class SyncServiceTest {
     }
 
     @Test
-    void unEchecDeSyncDesMrsNAvancePasLeCurseur() {
+    void unDocumentEnEchecEstSauteSansBloquerLaSource() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("gitlab-code");
+        SourceDocument poison = document("gitlab-code", "db/export-utf16.sql");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(
+                document("gitlab-code", "src/A.java"), poison, document("gitlab-code", "src/B.java")));
+        when(ingestion.ingest(any(), any(), anyBoolean())).thenReturn(true);
+        when(ingestion.ingest(eq(poison), any(), anyBoolean()))
+                .thenThrow(new IllegalStateException("invalid byte sequence for encoding UTF8: 0x00"));
+
+        syncServiceWith(connector).syncAll(false);
+
+        // Curseur figé sur ce document, il échouerait à chaque sync et bloquerait toute la source.
+        verify(syncState).record(eq("gitlab-code"), any(Instant.class),
+                eq("PARTIEL (2/3 indexés, 1 en échec : db/export-utf16.sql)"));
+        verify(syncState, never()).recordFailure(anyString(), anyString());
+        assertThat(tracker.snapshot().sources().getFirst().indexed()).isEqualTo(2);
+    }
+
+    @Test
+    void desEchecsEnRafaleSignalentUnePanneEtGardentLeCurseur() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("confluence");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(
+                document("confluence", "p1"), document("confluence", "p2"), document("confluence", "p3"),
+                document("confluence", "p4")));
+        when(ingestion.ingest(any(), any(), anyBoolean())).thenThrow(new IllegalStateException("Ollama HS"));
+
+        syncServiceWith(connector).syncAll(false);
+
+        verify(ingestion, times(SyncService.MAX_CONSECUTIVE_FAILURES)).ingest(any(), any(), anyBoolean());
+        verify(syncState, never()).record(eq("confluence"), any(), anyString());
+        verify(syncState).recordFailure(eq("confluence"), contains("Ollama HS"));
+    }
+
+    @Test
+    void unLotEntierementEnEchecGardeLeCurseur() {
+        SourceConnector connector = mock(SourceConnector.class);
+        when(connector.source()).thenReturn("jira");
+        when(connector.fetchChangedSince(any())).thenReturn(List.of(document("jira", "PASS-1")));
+        when(ingestion.ingest(any(), any(), anyBoolean())).thenThrow(new IllegalStateException("Ollama HS"));
+
+        syncServiceWith(connector).syncAll(false);
+
+        verify(syncState, never()).record(eq("jira"), any(), anyString());
+        verify(syncState).recordFailure(eq("jira"), contains("aucun des 1 documents"));
+    }
+
+    @Test
+    void unEchecDeSyncDesMrsGardeLaDateDeDerniereSyncReussie() {
+        // Le curseur des MRs est max(updated_at) de merge_requests ; sync_state ne sert qu'à
+        // l'affichage (dashboard), qui doit montrer la dernière sync réussie et le statut d'erreur.
         MergeRequestConnector connector = mock(MergeRequestConnector.class);
         when(connector.fetchUpdatedAfter(any())).thenThrow(new RuntimeException("GitLab HS"));
         ConnectorRegistry registry = new ConnectorRegistry(List.of(), Optional.of(connector));

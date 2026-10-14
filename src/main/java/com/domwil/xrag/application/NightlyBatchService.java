@@ -94,16 +94,22 @@ public class NightlyBatchService {
 
             projectSheets.refreshAll();
             String graphVerdict = graphQuality.evaluate().verdict();
-            String smokeReport = smokeTests.run().summary();
+            SmokeTestService.Report smoke = smokeTests.run();
             String evalReport = ragEval.hasCases() ? ragEval.evaluate().summary() : null;
 
             long minutes = Duration.between(start, Instant.now()).toMinutes();
             String stats = String.valueOf(maintenance.stats());
             log.info("Batch nocturne terminé en {} min — stats : {}", minutes, stats);
-            notifier.info("Batch nocturne terminé en " + minutes + " min",
-                    "Stats : " + stats + "\nÉval graphe : " + graphVerdict
-                            + (evalReport == null ? "" : "\n" + evalReport)
-                            + "\nSmoke test :\n" + smokeReport);
+            String report = "Stats : " + stats + "\nÉval graphe : " + graphVerdict
+                    + (evalReport == null ? "" : "\n" + evalReport)
+                    + "\nSmoke test :\n" + smoke.summary();
+            if (smoke.passed()) {
+                notifier.info("Batch nocturne terminé en " + minutes + " min", report);
+            } else {
+                // Index à jour mais réponses KO (Ollama, prompt, retrieval) : l'équipe le verrait
+                // avant nous — une notification « terminé » ordinaire passerait inaperçue.
+                notifier.alert("Batch nocturne terminé en " + minutes + " min — smoke test en échec", report);
+            }
         } catch (Exception e) {
             log.error("ALERTE batch nocturne : échec en cours de batch (upsert only, "
                     + "l'index déjà servi reste intact)", e);

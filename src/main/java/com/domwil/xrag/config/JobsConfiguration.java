@@ -47,7 +47,7 @@ import java.util.List;
 
 /**
  * Jobs planifiés : batch nocturne (cron team-config, défaut 02:00) et warm-up
- * modèle à 07:30, à l'heure du fuseau du conteneur (TZ, docker-compose.yml). En
+ * modèle à 07:30, à l'heure du fuseau du conteneur (XRAG_TZ, docker-compose.yml). En
  * journée, les webhooks GitLab font la mise à jour temps réel ; Confluence reste à J-1.
  */
 @Configuration

@@ -12,7 +12,8 @@ class JobsConfigurationTest {
 
     @Test
     void prechauffeLeModelePrincipalEtLeFallbackAvecLeNumCtxDesRequetes() {
-        var llm = new TeamConfig.Llm("ollama", "qwen2.5:7b-instruct", "qwen2.5:3b", null, 8192, null);
+        // Valeur différente du défaut (8192) : un num_ctx codé en dur serait détecté.
+        var llm = new TeamConfig.Llm("ollama", "qwen2.5:7b-instruct", "qwen2.5:3b", null, 16384, null);
 
         List<ChatOptions> warmUps = JobsConfiguration.chatWarmUpOptions(llm);
 
@@ -20,7 +21,7 @@ class JobsConfigurationTest {
                 .containsExactly("qwen2.5:7b-instruct", "qwen2.5:3b");
         // Un num_ctx différent de celui des requêtes forcerait Ollama à recharger le modèle.
         assertThat(warmUps).allSatisfy(options -> {
-            assertThat(((OllamaChatOptions) options).getNumCtx()).isEqualTo(8192);
+            assertThat(((OllamaChatOptions) options).getNumCtx()).isEqualTo(16384);
             assertThat(((OllamaChatOptions) options).getNumPredict()).isEqualTo(1);
         });
     }

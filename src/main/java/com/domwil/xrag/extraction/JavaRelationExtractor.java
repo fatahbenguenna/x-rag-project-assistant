@@ -37,11 +37,11 @@ public class JavaRelationExtractor implements RelationExtractor {
     /**
      * Niveau explicite : le défaut de JavaParser (POPULAR = Java 11) rejette records,
      * switch-expressions, text blocks et pattern matching — 46 fichiers sur 135 de ce
-     * dépôt — et un fichier rejeté ne produit aucune relation. Java 21 est le plus haut
-     * niveau supporté par JavaParser 3.26.
+     * dépôt — et un fichier rejeté ne produit aucune relation. Java 25 (LTS) couvre aussi
+     * les variables anonymes {@code _}, {@code import module} et les constructeurs flexibles.
      */
     private final JavaParser parser = new JavaParser(
-            new ParserConfiguration().setLanguageLevel(LanguageLevel.JAVA_21));
+            new ParserConfiguration().setLanguageLevel(LanguageLevel.JAVA_25));
 
     public JavaRelationExtractor(AliasResolver aliases) {
         this.aliases = aliases;

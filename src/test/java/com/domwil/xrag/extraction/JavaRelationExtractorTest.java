@@ -68,8 +68,9 @@ class JavaRelationExtractorTest {
 
     @Test
     void parsesModernJavaSyntax() {
-        // Records, switch-expressions, text blocks, pattern matching : rejetés par le niveau
-        // par défaut de JavaParser (Java 11), ce qui faisait perdre toutes les relations du fichier.
+        // Records, switch-expressions, text blocks, pattern matching, variables anonymes (Java 22+) :
+        // rejetés par le niveau par défaut de JavaParser (Java 11), ce qui faisait perdre toutes
+        // les relations du fichier.
         String java = """
                 package com.example;
 
@@ -89,6 +90,10 @@ class JavaRelationExtractorTest {
                             String sql = \"""
                                     SELECT * FROM orders
                                     \""";
+                        }
+                        try {
+                            onMessage(null);
+                        } catch (RuntimeException _) {
                         }
                     }
                 }

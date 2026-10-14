@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,6 +24,8 @@ public class SyncService {
 
     private static final Logger log = LoggerFactory.getLogger(SyncService.class);
     public static final String MR_SOURCE = "gitlab-mr";
+    /** Au-delà, les échecs d'ingestion trahissent une panne et non un document isolé. */
+    static final int MAX_CONSECUTIVE_FAILURES = 3;
 
     private final ConnectorRegistry connectors;
     private final IngestionService ingestion;
@@ -71,17 +74,41 @@ public class SyncService {
         try {
             var documents = connector.fetchChangedSince(since);
             int indexed = 0;
+            int consecutiveFailures = 0;
+            var failed = new ArrayList<String>();
             for (var doc : documents) {
-                // full=true force la ré-indexation (récupère les changements d'extraction, ex.
-                // commentaires, même si la version source n'a pas bougé).
-                if (ingestion.ingest(doc, java.util.Set.of(), full)) {
-                    indexed++;
+                try {
+                    // full=true force la ré-indexation (récupère les changements d'extraction, ex.
+                    // commentaires, même si la version source n'a pas bougé).
+                    if (ingestion.ingest(doc, java.util.Set.of(), full)) {
+                        indexed++;
+                    }
+                    consecutiveFailures = 0;
+                } catch (Exception e) {
+                    // Un document en échec (contenu illisible, U+0000…) est sauté : sans cette
+                    // isolation, le curseur figé le ferait échouer à chaque sync et bloquerait
+                    // toute la source. Des échecs en rafale signalent en revanche une panne
+                    // (Ollama, PostgreSQL) : on abandonne pour garder le curseur.
+                    failed.add(doc.path());
+                    log.warn("Sync {} : document {} ignoré ({})", source, doc.path(), e.getMessage());
+                    if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                        throw new IllegalStateException("%d documents en échec d'affilée, dernier : %s"
+                                .formatted(consecutiveFailures, e.getMessage()), e);
+                    }
                 }
             }
-            syncState.record(source, startedAt, "OK (%d/%d indexés)".formatted(indexed, documents.size()));
-            progress.finishSource(source, "OK", indexed, documents.size());
-            log.info("Sync {} : {}/{} documents (ré)indexés depuis {}",
-                    source, indexed, documents.size(), since == null ? "toujours" : since);
+            if (!failed.isEmpty() && failed.size() == documents.size()) {
+                throw new IllegalStateException("aucun des %d documents n'a pu être indexé".formatted(failed.size()));
+            }
+            String status = failed.isEmpty()
+                    ? "OK (%d/%d indexés)".formatted(indexed, documents.size())
+                    : "PARTIEL (%d/%d indexés, %d en échec : %s)".formatted(indexed, documents.size(),
+                            failed.size(), String.join(", ", failed.subList(0, Math.min(5, failed.size()))));
+            syncState.record(source, startedAt, status);
+            progress.finishSource(source, failed.isEmpty() ? "OK" : "PARTIEL", indexed, documents.size());
+            log.info("Sync {} : {}/{} documents (ré)indexés depuis {}{}",
+                    source, indexed, documents.size(), since == null ? "toujours" : since,
+                    failed.isEmpty() ? "" : " — " + failed.size() + " en échec");
         } catch (Exception e) {
             // Curseur inchangé : la prochaine sync reprend depuis la dernière réussie.
             syncState.recordFailure(source, "ERREUR " + e.getMessage());
@@ -108,6 +135,8 @@ public class SyncService {
             progress.finishSource(MR_SOURCE, "OK", mrs.size(), mrs.size());
             log.info("Sync MRs : {} mises à jour depuis {}", mrs.size(), since == null ? "toujours" : since);
         } catch (Exception e) {
+            // Le curseur des MRs est max(updated_at) de merge_requests : sync_state ne sert
+            // ici qu'à l'affichage, qui garde la date de la dernière sync réussie.
             syncState.recordFailure(MR_SOURCE, "ERREUR " + e.getMessage());
             progress.finishSource(MR_SOURCE, "ERREUR " + e.getMessage(), 0, 0);
             log.error("Sync MRs en échec", e);
