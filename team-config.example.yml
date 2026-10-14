@@ -80,7 +80,10 @@ eval:
     - { question: "Y a-t-il un ticket sur le bug de persistance ?", expected: "PASS-42" }
 
 schedule:
-  nightly: "0 0 2 * * *"        # cron Spring (6 champs) — batch nocturne 02:00
+  nightly: "0 0 2 * * *"        # cron Spring (6 champs) — batch nocturne 02:00, heure de XRAG_TZ (.env)
+  # Heure d'été : un batch planifié dans l'heure du changement d'heure de XRAG_TZ est sauté au
+  # passage en été et peut être rejoué en octobre (sans risque, upsert only). Europe/Paris :
+  # 02:00-02:59, éviter avec "0 5 3 * * *" ; Europe/Helsinki : 03:00-03:59 ; Londres : 01:00-01:59.
 
 extractors:
   java: true

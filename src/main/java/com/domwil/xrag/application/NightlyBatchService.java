@@ -4,11 +4,16 @@ import com.domwil.xrag.domain.port.MaintenanceRepository;
 import com.domwil.xrag.domain.port.Notifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Batch nocturne (02:00, cible terminé ~02:45) :
@@ -34,13 +39,22 @@ public class NightlyBatchService {
     private final boolean llmEnrichmentEnabled;
     private final int llmMaxDocsPerNight;
     private final Notifier notifier;
+    private final ChatModel chatModel;
+    private final List<ChatOptions> chatWarmUps;
 
+    /**
+     * @param chatModel   modèle de chat à préchauffer à 07:30, ou null (provider distant)
+     * @param chatWarmUps options de chaque modèle à préchauffer (mêmes model et num_ctx que
+     *                    les requêtes réelles, sinon Ollama recharge le modèle à la première
+     *                    question) ; vide = embedding seul
+     */
     public NightlyBatchService(JdbcTemplate jdbc, EmbeddingModel embeddingModel,
                                SyncService syncService, MaintenanceRepository maintenance,
                                ProjectSheetService projectSheets, SmokeTestService smokeTests,
                                RagEvalService ragEval,
                                GraphQualityService graphQuality, GraphEnrichmentService graphEnrichment,
-                               boolean llmEnrichmentEnabled, int llmMaxDocsPerNight, Notifier notifier) {
+                               boolean llmEnrichmentEnabled, int llmMaxDocsPerNight, Notifier notifier,
+                               ChatModel chatModel, List<ChatOptions> chatWarmUps) {
         this.jdbc = jdbc;
         this.embeddingModel = embeddingModel;
         this.syncService = syncService;
@@ -53,6 +67,8 @@ public class NightlyBatchService {
         this.llmEnrichmentEnabled = llmEnrichmentEnabled;
         this.llmMaxDocsPerNight = llmMaxDocsPerNight;
         this.notifier = notifier;
+        this.chatModel = chatModel;
+        this.chatWarmUps = chatModel == null ? List.of() : List.copyOf(chatWarmUps);
     }
 
     public void run() {
@@ -69,7 +85,7 @@ public class NightlyBatchService {
         }
 
         try {
-            syncService.syncAll(false);
+            List<String> syncAnomalies = syncService.syncAll(false);
 
             int purged = maintenance.purgeOrphanNodes();
             log.info("Réconciliation : {} nœuds orphelins purgés", purged);
@@ -79,16 +95,32 @@ public class NightlyBatchService {
 
             projectSheets.refreshAll();
             String graphVerdict = graphQuality.evaluate().verdict();
-            String smokeReport = smokeTests.run();
+            SmokeTestService.Report smoke = smokeTests.run();
             String evalReport = ragEval.hasCases() ? ragEval.evaluate().summary() : null;
 
             long minutes = Duration.between(start, Instant.now()).toMinutes();
             String stats = String.valueOf(maintenance.stats());
             log.info("Batch nocturne terminé en {} min — stats : {}", minutes, stats);
-            notifier.info("Batch nocturne terminé en " + minutes + " min",
-                    "Stats : " + stats + "\nÉval graphe : " + graphVerdict
-                            + (evalReport == null ? "" : "\n" + evalReport)
-                            + "\nSmoke test :\n" + smokeReport);
+            String report = "Stats : " + stats + "\nÉval graphe : " + graphVerdict
+                    + (evalReport == null ? "" : "\n" + evalReport)
+                    + (syncAnomalies.isEmpty() ? "" : "\nSources en anomalie :\n" + String.join("\n", syncAnomalies))
+                    + "\nSmoke test :\n" + smoke.summary();
+            String title = "Batch nocturne terminé en " + minutes + " min";
+            // Une source en erreur ou des documents sautés (PARTIEL : ils ne reviendront qu'à leur
+            // prochaine modification), ou des réponses KO : une notification « terminé »
+            // ordinaire passerait inaperçue.
+            var problems = new ArrayList<String>();
+            if (!syncAnomalies.isEmpty()) {
+                problems.add(syncAnomalies.size() + " source(s) en anomalie");
+            }
+            if (!smoke.passed()) {
+                problems.add("smoke test en échec");
+            }
+            if (problems.isEmpty()) {
+                notifier.info(title, report);
+            } else {
+                notifier.alert(title + " — " + String.join(", ", problems), report);
+            }
         } catch (Exception e) {
             log.error("ALERTE batch nocturne : échec en cours de batch (upsert only, "
                     + "l'index déjà servi reste intact)", e);
@@ -126,13 +158,25 @@ public class NightlyBatchService {
         }
     }
 
-    /** Warm-up 07:30 : recharge le modèle avant l'arrivée de l'équipe (OLLAMA_KEEP_ALIVE=24h). */
+    /**
+     * Warm-up 07:30 : recharge les modèles avant l'arrivée de l'équipe (OLLAMA_KEEP_ALIVE=24h).
+     * L'embedding seul ne chargeait que bge-m3 : la première question du matin payait le
+     * chargement du modèle de chat. Chaque modèle est préchauffé indépendamment.
+     */
     public void warmUp() {
         try {
             embeddingModel.embed("warm-up");
-            log.info("Warm-up modèle effectué");
+            log.info("Warm-up du modèle d'embedding effectué");
         } catch (Exception e) {
-            log.warn("Warm-up en échec : {}", e.getMessage());
+            log.warn("Warm-up du modèle d'embedding en échec : {}", e.getMessage());
+        }
+        for (ChatOptions options : chatWarmUps) {
+            try {
+                chatModel.call(new Prompt("OK", options));
+                log.info("Warm-up du modèle {} effectué", options.getModel());
+            } catch (Exception e) {
+                log.warn("Warm-up du modèle {} en échec : {}", options.getModel(), e.getMessage());
+            }
         }
     }
 }

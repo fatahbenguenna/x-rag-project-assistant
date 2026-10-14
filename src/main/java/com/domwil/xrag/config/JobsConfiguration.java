@@ -26,7 +26,10 @@ import com.domwil.xrag.domain.port.RelationExtractor;
 import com.domwil.xrag.domain.port.SyncStateRepository;
 import com.domwil.xrag.extraction.MergeRequestGraphMapper;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -39,12 +42,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Jobs planifiés : batch nocturne (cron team-config, défaut 02:00) et warm-up
- * modèle à 07:30. En journée, les webhooks GitLab font la mise à jour temps
- * réel ; Confluence reste à J-1.
+ * modèle à 07:30, à l'heure du fuseau du conteneur (XRAG_TZ, docker-compose.yml). En
+ * journée, les webhooks GitLab font la mise à jour temps réel ; Confluence reste à J-1.
  */
 @Configuration
 @EnableScheduling
@@ -78,8 +82,21 @@ public class JobsConfiguration implements SchedulingConfigurer {
     public SyncService syncService(ConnectorRegistry connectors, IngestionService ingestion,
                                    SyncStateRepository syncState, MergeRequestRepository mergeRequests,
                                    MergeRequestGraphMapper mrMapper, GraphRepository graph,
-                                   IndexingProgressTracker progressTracker) {
-        return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph, progressTracker);
+                                   IndexingProgressTracker progressTracker,
+                                   JdbcTemplate jdbc, EmbeddingModel embeddingModel, Notifier notifier) {
+        return new SyncService(connectors, ingestion, syncState, mergeRequests, mrMapper, graph, progressTracker,
+                () -> infrastructureUp(jdbc, embeddingModel), notifier);
+    }
+
+    /** Sonde de la sync : PostgreSQL et le modèle d'embedding répondent. */
+    static boolean infrastructureUp(JdbcTemplate jdbc, EmbeddingModel embeddingModel) {
+        try {
+            jdbc.queryForObject("SELECT 1", Integer.class);
+            float[] probe = embeddingModel.embed("ping");
+            return probe != null && probe.length > 0;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     @Bean
@@ -124,9 +141,36 @@ public class JobsConfiguration implements SchedulingConfigurer {
                                                    ProjectSheetService projectSheets, SmokeTestService smokeTests,
                                                    RagEvalService ragEval, GraphQualityService graphQuality,
                                                    GraphEnrichmentService graphEnrichment,
-                                                   TeamConfig config, Notifier notifier) {
+                                                   TeamConfig config, Notifier notifier,
+                                                   ObjectProvider<OllamaChatModel> ollama) {
+        List<ChatOptions> chatWarmUps = chatWarmUpOptions(config.llm());
         return new NightlyBatchService(jdbc, embeddingModel, syncService, maintenance,
                 projectSheets, smokeTests, ragEval, graphQuality, graphEnrichment,
-                config.extractors().llm(), config.extractors().llmMaxDocsPerNight(), notifier);
+                config.extractors().llm(), config.extractors().llmMaxDocsPerNight(), notifier,
+                chatWarmUps.isEmpty() ? null : ollama.getIfAvailable(), chatWarmUps);
+    }
+
+    /**
+     * Modèles de chat Ollama à préchauffer à 07:30 : le principal et, s'il est configuré, le
+     * fallback (questions descriptives). Mêmes model et num_ctx que les requêtes réelles — un
+     * num_ctx différent forcerait Ollama à recharger le modèle — et un seul token généré.
+     * Aucun sur un provider distant.
+     */
+    static List<ChatOptions> chatWarmUpOptions(TeamConfig.Llm llm) {
+        if (!"ollama".equals(llm.provider())) {
+            return List.of();
+        }
+        var models = new ArrayList<String>();
+        models.add(llm.model());
+        if (llm.fallbackModel() != null && !llm.fallbackModel().isBlank()) {
+            models.add(llm.fallbackModel());
+        }
+        return models.stream()
+                .<ChatOptions>map(model -> OllamaChatOptions.builder()
+                        .model(model)
+                        .numCtx(llm.numCtx())
+                        .numPredict(1)
+                        .build())
+                .toList();
     }
 }

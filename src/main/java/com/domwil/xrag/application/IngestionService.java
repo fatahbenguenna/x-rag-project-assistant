@@ -74,7 +74,7 @@ public class IngestionService {
             }
         }
 
-        List<String> pieces = chunker.split(doc.content());
+        List<String> pieces = chunker.split(withoutNul(doc.content()));
         if (pieces.isEmpty()) {
             return false;
         }
@@ -84,12 +84,21 @@ public class IngestionService {
             toUpsert.add(new Chunk(
                     doc.chunkKeyPrefix() + ":" + i,
                     doc.source(), doc.project(), doc.path(), i,
-                    doc.title(), pieces.get(i), doc.url(),
+                    withoutNul(doc.title()), pieces.get(i), doc.url(),
                     nodeIds, embeddings.get(i), doc.version()));
         }
         chunks.upsert(toUpsert);
         chunks.deleteOtherChunksOf(doc.source(), doc.path(),
                 toUpsert.stream().map(Chunk::id).toList());
         return true;
+    }
+
+    /**
+     * PostgreSQL refuse U+0000 dans un TEXT (« invalid byte sequence for encoding UTF8: 0x00 ») :
+     * un fichier UTF-16 versionné (export SSMS, redirection PowerShell 5) ou un log collé dans
+     * une issue ferait échouer l'upsert à chaque sync.
+     */
+    static String withoutNul(String text) {
+        return text == null || text.indexOf('\u0000') < 0 ? text : text.replace("\u0000", "");
     }
 }
