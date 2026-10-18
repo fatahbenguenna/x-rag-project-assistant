@@ -42,7 +42,7 @@ public class GitLabConnector implements SourceConnector, MergeRequestConnector {
 
     public GitLabConnector(TeamConfig.Gitlab config, String token) {
         this(config, RestClient.builder()
-                .baseUrl(config.baseUrl())
+                .baseUrl(config.connection().baseUrl())
                 .defaultHeader("PRIVATE-TOKEN", token)
                 .requestInterceptor(new ReadOnlyHttpGuard())
                 .build());

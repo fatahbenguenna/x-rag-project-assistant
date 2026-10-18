@@ -53,7 +53,7 @@ class JiraConnectorTest {
     void cloud_paginateParNextPageTokenEtExtraitLaDescriptionAdf() {
         var builder = RestClient.builder().baseUrl(CLOUD);
         var server = MockRestServiceServer.bindTo(builder).build();
-        var connector = new JiraConnector(new TeamConfig.Jira(CLOUD, List.of("FPSSUITE")), builder.build());
+        var connector = new JiraConnector(new TeamConfig.Jira(null, TeamConfig.Connection.rest(CLOUD), List.of("FPSSUITE")), builder.build());
 
         server.expect(requestTo(containsString("/rest/api/3/search/jql")))
                 .andRespond(withSuccess(PAGE_1, MediaType.APPLICATION_JSON));
@@ -75,7 +75,7 @@ class JiraConnectorTest {
     void dataCenter_utiliseLApiV2SearchAvecStartAt() {
         var builder = RestClient.builder().baseUrl(DATA_CENTER);
         var server = MockRestServiceServer.bindTo(builder).build();
-        var connector = new JiraConnector(new TeamConfig.Jira(DATA_CENTER, List.of("FPSSUITE")), builder.build());
+        var connector = new JiraConnector(new TeamConfig.Jira(null, TeamConfig.Connection.rest(DATA_CENTER), List.of("FPSSUITE")), builder.build());
 
         server.expect(requestTo(containsString("/rest/api/2/search")))
                 .andRespond(withSuccess(V2_PAGE, MediaType.APPLICATION_JSON));

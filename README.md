@@ -77,7 +77,10 @@ détail par type de changement : RUNBOOK §10.
 
 ### Authentification Confluence/Jira
 
-Cinq modes, résolus depuis `.env` par ordre de priorité (voir `.env.example` pour le détail) :
+Cinq modes. Le mode se fixe dans `team-config.yml` (`sources.<source>.connection.auth`) et
+ses secrets vont dans `.env` ; il est vérifié au démarrage (un secret manquant bloque le
+démarrage au lieu d'un 401 à la première sync). Sans `connection.auth`, le mode est déduit
+des variables renseignées, dans cet ordre de priorité (voir `.env.example` pour le détail) :
 
 1. **cookie** (`*_COOKIE`) : chaîne `Cookie` brute d'une session navigateur authentifiée
    (SSO, certificat SoftID…). Mode **dev/validation** (expire avec la session) et **seul
@@ -93,7 +96,7 @@ Cinq modes, résolus depuis `.env` par ordre de priorité (voir `.env.example` p
 5. **bearer** (`*_TOKEN` seul sur du self-hosted) : PAT Data Center.
 
 Les modes **oauth** et **scoped** découvrent le `cloudId` du tenant automatiquement
-(`{site}/_edge/tenant_info`). Côté `team-config.yml`, le `base-url` d'un site Cloud est
+(`{site}/_edge/tenant_info`). Côté `team-config.yml`, le `connection.base-url` d'un site Cloud est
 `https://votre-org.atlassian.net/wiki` (Confluence) et `https://votre-org.atlassian.net`
 (Jira) ; pour du self-hosted sous context path (`https://host/confluence`), l'inclure dans
 le `base-url`. GitLab reste en PAT (`GITLAB_TOKEN`).

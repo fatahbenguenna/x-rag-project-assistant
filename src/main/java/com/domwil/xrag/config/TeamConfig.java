@@ -7,9 +7,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.Name;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -69,16 +71,77 @@ public record TeamConfig(
     ) {
     }
 
-    public record Confluence(@NotBlank String baseUrl, @NotEmpty List<String> spaces) {
+    /**
+     * Comment joindre une source, séparé de ce qu'on y récupère (espaces, projets, groupe).
+     *
+     * @param type    transport ({@code rest} par défaut — seul transport implémenté)
+     * @param baseUrl racine de l'API (voir team-config.example.yml)
+     * @param auth    mode d'auth Atlassian ; absent = déduit des variables .env (historique)
+     */
+    public record Connection(Transport type, @NotBlank String baseUrl, AuthMode auth) {
+        public Connection {
+            type = type == null ? Transport.REST : type;
+        }
+
+        public static Connection rest(String baseUrl) {
+            return new Connection(Transport.REST, baseUrl, null);
+        }
+
+        /**
+         * Accepte la forme historique ({@code base-url} directement sous la source) comme
+         * {@code connection.type: rest}, et refuse l'ambiguïté des deux formes à la fois.
+         */
+        static Connection resolve(String source, Connection connection, String legacyBaseUrl) {
+            boolean legacy = legacyBaseUrl != null && !legacyBaseUrl.isBlank();
+            if (connection != null && legacy) {
+                throw new IllegalArgumentException("sources." + source + " : base-url déclaré deux fois "
+                        + "(forme historique et connection.base-url) — ne garder que connection.base-url");
+            }
+            if (connection == null && !legacy) {
+                throw new IllegalArgumentException("sources." + source + " : connection.base-url manquant");
+            }
+            return connection != null ? connection : rest(legacyBaseUrl);
+        }
     }
 
-    public record Gitlab(@NotBlank String baseUrl, @NotBlank String group, List<String> branches) {
+    public enum Transport { REST }
+
+    /** Modes d'auth Confluence/Jira (détail et variables .env : voir .env.example). */
+    public enum AuthMode {
+        COOKIE, BASIC, BEARER, SCOPED, OAUTH;
+
+        public String label() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    /** @param legacyBaseUrl forme historique de {@code connection.base-url} (dépréciée) */
+    public record Confluence(@Name("base-url") String legacyBaseUrl, @Valid Connection connection,
+                             @NotEmpty List<String> spaces) {
+        public Confluence {
+            connection = Connection.resolve("confluence", connection, legacyBaseUrl);
+        }
+    }
+
+    /** @param legacyBaseUrl forme historique de {@code connection.base-url} (dépréciée) */
+    public record Gitlab(@Name("base-url") String legacyBaseUrl, @Valid Connection connection,
+                         @NotBlank String group, List<String> branches) {
         public Gitlab {
+            connection = Connection.resolve("gitlab", connection, legacyBaseUrl);
+            if (connection.auth() != null) {
+                throw new IllegalArgumentException("sources.gitlab.connection.auth : sans objet pour GitLab "
+                        + "(GITLAB_TOKEN est toujours envoyé en PRIVATE-TOKEN)");
+            }
             branches = branches == null || branches.isEmpty() ? List.of("main") : List.copyOf(branches);
         }
     }
 
-    public record Jira(@NotBlank String baseUrl, @NotEmpty List<String> projects) {
+    /** @param legacyBaseUrl forme historique de {@code connection.base-url} (dépréciée) */
+    public record Jira(@Name("base-url") String legacyBaseUrl, @Valid Connection connection,
+                       @NotEmpty List<String> projects) {
+        public Jira {
+            connection = Connection.resolve("jira", connection, legacyBaseUrl);
+        }
     }
 
     /**

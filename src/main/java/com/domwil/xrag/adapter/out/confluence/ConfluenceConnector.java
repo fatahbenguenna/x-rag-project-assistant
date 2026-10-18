@@ -54,7 +54,7 @@ public class ConfluenceConnector implements SourceConnector {
     ConfluenceConnector(TeamConfig.Confluence config, RestClient http) {
         this.config = config;
         this.http = http;
-        this.platform = AtlassianPlatform.of(config.baseUrl());
+        this.platform = AtlassianPlatform.of(config.connection().baseUrl());
     }
 
     @Override
@@ -136,7 +136,7 @@ public class ConfluenceConnector implements SourceConnector {
                 pageId,
                 page.path("title").asText(),
                 HtmlText.toText(storage) + fetchCloudComments(pageId),
-                config.baseUrl() + page.path("_links").path("webui").asText(),
+                config.connection().baseUrl() + page.path("_links").path("webui").asText(),
                 version.path("number").asText(),
                 parseInstant(version.path("createdAt").asText(null)),
                 Map.of("space", spaceKey));
@@ -227,7 +227,7 @@ public class ConfluenceConnector implements SourceConnector {
                 page.path("id").asText(),
                 page.path("title").asText(),
                 HtmlText.toText(page.path("body").path("storage").path("value").asText()),
-                config.baseUrl() + page.path("_links").path("webui").asText(),
+                config.connection().baseUrl() + page.path("_links").path("webui").asText(),
                 version.path("number").asText(),
                 parseInstant(version.path("when").asText(null)),
                 Map.of("space", page.path("space").path("key").asText()));

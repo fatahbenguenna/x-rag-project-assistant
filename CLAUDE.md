@@ -79,10 +79,10 @@ team: equipe-passerelle
 llm:
   provider: ollama          # ou gemini / openai-compatible
   model: qwen2.5:7b-instruct
-sources:
-  confluence: { base-url: ..., spaces: [PASS, ARCHI] }
-  gitlab: { base-url: ..., group: passerelle, branches: [main, develop] }  # découverte auto des repos du groupe
-  jira: { base-url: ..., projects: [PASS, INFRA] }
+sources:                    # connection = COMMENT se connecter ; le reste = CE qu'on récupère
+  confluence: { connection: { type: rest, base-url: ..., auth: bearer }, spaces: [PASS, ARCHI] }
+  gitlab: { connection: { type: rest, base-url: ... }, group: passerelle, branches: [main, develop] }  # découverte auto des repos du groupe
+  jira: { connection: { type: rest, base-url: ..., auth: bearer }, projects: [PASS, INFRA] }  # auth absent = déduit du .env
 aliases:
   fpskds: ["FPS KDS", "fps-kds", "FPSKDS"]   # -> nœuds project: du graphe
 synonyms:

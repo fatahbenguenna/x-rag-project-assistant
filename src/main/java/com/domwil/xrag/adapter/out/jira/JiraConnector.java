@@ -52,7 +52,7 @@ public class JiraConnector implements SourceConnector {
     JiraConnector(TeamConfig.Jira config, RestClient http) {
         this.config = config;
         this.http = http;
-        this.platform = AtlassianPlatform.of(config.baseUrl());
+        this.platform = AtlassianPlatform.of(config.connection().baseUrl());
     }
 
     @Override
@@ -162,7 +162,7 @@ public class JiraConnector implements SourceConnector {
                 key,
                 key + " — " + summary,
                 (summary + "\n\n" + description + comments).strip(),
-                config.baseUrl() + "/browse/" + key,
+                config.connection().baseUrl() + "/browse/" + key,
                 fields.path("updated").asText(null),
                 parseInstant(fields.path("updated").asText(null)),
                 metadata);

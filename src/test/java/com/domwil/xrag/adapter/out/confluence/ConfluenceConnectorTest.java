@@ -62,7 +62,7 @@ class ConfluenceConnectorTest {
     void cloud_resoutSpaceIdListePagesEtPagineParCursor() {
         var builder = RestClient.builder().baseUrl(CLOUD);
         var server = MockRestServiceServer.bindTo(builder).build();
-        var connector = new ConfluenceConnector(new TeamConfig.Confluence(CLOUD, List.of("FPSSUITE")), builder.build());
+        var connector = new ConfluenceConnector(new TeamConfig.Confluence(null, TeamConfig.Connection.rest(CLOUD), List.of("FPSSUITE")), builder.build());
 
         server.expect(requestTo(containsString("/api/v2/spaces")))
                 .andExpect(queryParam("keys", "FPSSUITE"))
@@ -92,7 +92,7 @@ class ConfluenceConnectorTest {
     void cloud_arreteLaPaginationDesQuUnePageEstAnterieureASince() {
         var builder = RestClient.builder().baseUrl(CLOUD);
         var server = MockRestServiceServer.bindTo(builder).build();
-        var connector = new ConfluenceConnector(new TeamConfig.Confluence(CLOUD, List.of("FPSSUITE")), builder.build());
+        var connector = new ConfluenceConnector(new TeamConfig.Confluence(null, TeamConfig.Connection.rest(CLOUD), List.of("FPSSUITE")), builder.build());
 
         server.expect(requestTo(containsString("/api/v2/spaces")))
                 .andRespond(withSuccess(SPACE, MediaType.APPLICATION_JSON));
@@ -112,7 +112,7 @@ class ConfluenceConnectorTest {
     void dataCenter_utiliseLApiV1Cql() {
         var builder = RestClient.builder().baseUrl(DATA_CENTER);
         var server = MockRestServiceServer.bindTo(builder).build();
-        var connector = new ConfluenceConnector(new TeamConfig.Confluence(DATA_CENTER, List.of("FPSSUITE")), builder.build());
+        var connector = new ConfluenceConnector(new TeamConfig.Confluence(null, TeamConfig.Connection.rest(DATA_CENTER), List.of("FPSSUITE")), builder.build());
 
         server.expect(requestTo(containsString("/rest/api/content/search")))
                 .andRespond(withSuccess(V1_RESULTS, MediaType.APPLICATION_JSON));

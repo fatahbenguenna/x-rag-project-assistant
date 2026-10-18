@@ -17,7 +17,8 @@ fi
 CONFIG="${TEAM_CONFIG:-./team-config.yml}"
 [ -f "$CONFIG" ] || { echo "ERREUR : $CONFIG introuvable (copier team-config.example.yml)." >&2; exit 1; }
 
-yaml_value() { # yaml_value <section> <clé> — valeur d'une clé sous sources.<section> ou llm
+yaml_value() { # yaml_value <section> <clé> — valeur d'une clé sous sources.<section> (bloc
+               # connection compris, forme historique à plat aussi) ou llm
   awk -v sec="$1" -v key="$2" '
     $1 == sec ":" { in_sec = 1; next }
     in_sec && /^  [a-zA-Z]/ { in_sec = 0 }
@@ -65,10 +66,11 @@ oauth_access_token() { # oauth_access_token <client_id> <client_secret>
 }
 
 # Résout, comme l'application, (mode, base API effective, args curl d'auth) pour une
-# source Atlassian. Priorité : cookie > oauth > basic > scoped > bearer. Résultat dans
-# les globales RA_MODE, RA_BASE, RA_AUTH (tableau d'arguments curl).
-resolve_atlassian() { # resolve_atlassian <prefix> <base-url> <produit: confluence|jira>
-  local prefix=$1 base=$2 product=$3
+# source Atlassian. Mode explicite (connection.auth) appliqué tel quel ; sinon déduit des
+# variables : cookie > oauth > basic > scoped > bearer. Résultat dans les globales
+# RA_MODE, RA_BASE, RA_AUTH (tableau d'arguments curl).
+resolve_atlassian() { # resolve_atlassian <prefix> <base-url> <produit: confluence|jira> [mode]
+  local prefix=$1 base=$2 product=$3 forced=${4:-}
   local token user cookie cid secret suffix cloudid access
   token=$(getvar "${prefix}_TOKEN");  user=$(getvar "${prefix}_USER")
   cookie=$(getvar "${prefix}_COOKIE")
@@ -77,23 +79,28 @@ resolve_atlassian() { # resolve_atlassian <prefix> <base-url> <produit: confluen
   if printf '%s' "$base" | grep -q '\.atlassian\.net'; then RA_PLATFORM=cloud; else RA_PLATFORM=datacenter; fi
   RA_AUTH=()
 
-  if [ -n "$cookie" ]; then
-    RA_MODE=cookie; RA_BASE=$base; RA_AUTH=(--header "Cookie: $cookie")
-  elif [ -n "$cid" ] && [ -n "$secret" ]; then
-    RA_MODE=oauth
-    cloudid=$(tenant_cloud_id "$base"); access=$(oauth_access_token "$cid" "$secret")
-    RA_BASE="https://api.atlassian.com/ex/$product/$cloudid$suffix"
-    RA_AUTH=(--header "Authorization: Bearer $access")
-  elif [ -n "$user" ]; then
-    RA_MODE=basic; RA_BASE=$base; RA_AUTH=(--user "$user:$token")
-  elif [ -n "$token" ] && [ "$RA_PLATFORM" = cloud ]; then
-    RA_MODE=scoped
-    cloudid=$(tenant_cloud_id "$base")
-    RA_BASE="https://api.atlassian.com/ex/$product/$cloudid$suffix"
-    RA_AUTH=(--header "Authorization: Bearer $token")
-  else
-    RA_MODE=bearer; RA_BASE=$base; RA_AUTH=(--header "Authorization: Bearer $token")
+  if [ -n "$forced" ]; then RA_MODE=$forced
+  elif [ -n "$cookie" ]; then RA_MODE=cookie
+  elif [ -n "$cid" ] && [ -n "$secret" ]; then RA_MODE=oauth
+  elif [ -n "$user" ]; then RA_MODE=basic
+  elif [ -n "$token" ] && [ "$RA_PLATFORM" = cloud ]; then RA_MODE=scoped
+  else RA_MODE=bearer
   fi
+
+  case "$RA_MODE" in
+    cookie) RA_BASE=$base; RA_AUTH=(--header "Cookie: $cookie") ;;
+    oauth)
+      cloudid=$(tenant_cloud_id "$base"); access=$(oauth_access_token "$cid" "$secret")
+      RA_BASE="https://api.atlassian.com/ex/$product/$cloudid$suffix"
+      RA_AUTH=(--header "Authorization: Bearer $access") ;;
+    basic) RA_BASE=$base; RA_AUTH=(--user "$user:$token") ;;
+    scoped)
+      cloudid=$(tenant_cloud_id "$base")
+      RA_BASE="https://api.atlassian.com/ex/$product/$cloudid$suffix"
+      RA_AUTH=(--header "Authorization: Bearer $token") ;;
+    bearer) RA_BASE=$base; RA_AUTH=(--header "Authorization: Bearer $token") ;;
+    *) RA_BASE=$base; echo "  [!!] $prefix : auth: $RA_MODE inconnu (cookie|basic|bearer|scoped|oauth)" >&2 ;;
+  esac
 }
 
 echo "== Préflight x-rag ($CONFIG) =="
@@ -137,7 +144,7 @@ fi
 # --- Confluence -----------------------------------------------------------------
 confluence_url=$(yaml_value confluence base-url)
 if [ -n "$confluence_url" ]; then
-  resolve_atlassian CONFLUENCE "$confluence_url" confluence
+  resolve_atlassian CONFLUENCE "$confluence_url" confluence "$(yaml_value confluence auth)"
   space=$(first_of_list "$(yaml_value confluence spaces)")
   if [ "$RA_PLATFORM" = cloud ]; then
     http_json "Confluence space $space [$RA_MODE/cloud]" '"results"' \
@@ -151,7 +158,7 @@ fi
 # --- Jira ------------------------------------------------------------------------
 jira_url=$(yaml_value jira base-url)
 if [ -n "$jira_url" ]; then
-  resolve_atlassian JIRA "$jira_url" jira
+  resolve_atlassian JIRA "$jira_url" jira "$(yaml_value jira auth)"
   project=$(first_of_list "$(yaml_value jira projects)")
   if [ "$RA_PLATFORM" = cloud ]; then
     http_json "Jira identité (myself) [$RA_MODE/cloud]" '"name"\|"displayName"\|"accountId"' \

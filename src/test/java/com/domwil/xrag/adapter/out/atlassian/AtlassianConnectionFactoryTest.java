@@ -1,5 +1,6 @@
 package com.domwil.xrag.adapter.out.atlassian;
 
+import com.domwil.xrag.config.TeamConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -8,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,5 +89,57 @@ class AtlassianConnectionFactoryTest {
 
         assertThat(conn).isInstanceOf(DirectConnection.class);
         assertThat(conn.mode()).isEqualTo("bearer");
+    }
+
+    @Test
+    void modeExplicite_bearerMalgreUnUserRenseigne() {
+        var conn = factory.create(tokenUserCookie("pat", "user", ""),
+                "https://jira.interne.example", AtlassianProduct.JIRA, TeamConfig.AuthMode.BEARER);
+
+        assertThat(conn).isInstanceOf(DirectConnection.class);
+        assertThat(conn.mode()).isEqualTo("bearer");
+    }
+
+    @Test
+    void modeExplicite_basicMalgreUnCookieRenseigne() {
+        var conn = factory.create(tokenUserCookie("token", "svc", "JSESSIONID=x"),
+                "https://jira.interne.example", AtlassianProduct.JIRA, TeamConfig.AuthMode.BASIC);
+
+        assertThat(conn.mode()).isEqualTo("basic");
+    }
+
+    @Test
+    void modeExplicite_scopedSurCloud_passerelle() {
+        when(cloudIdResolver.resolve("https://team.atlassian.net")).thenReturn("cloud-42");
+
+        var conn = factory.create(tokenUserCookie("svc-token", "svc@example.com", ""),
+                "https://team.atlassian.net", AtlassianProduct.JIRA, TeamConfig.AuthMode.SCOPED);
+
+        assertThat(conn).isInstanceOf(GatewayTokenConnection.class);
+        assertThat(conn.baseUrl()).isEqualTo("https://api.atlassian.com/ex/jira/cloud-42");
+    }
+
+    @Test
+    void modeExplicite_scopedSurDataCenter_refuse() {
+        assertThatThrownBy(() -> factory.create(tokenUserCookie("pat", "", ""),
+                "https://jira.interne.example", AtlassianProduct.JIRA, TeamConfig.AuthMode.SCOPED))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("auth: bearer");
+    }
+
+    @Test
+    void modeExplicite_oauthSurDataCenter_refuse() {
+        assertThatThrownBy(() -> factory.create(new SourceCredentials("", "", "", "id", "secret"),
+                "https://jira.interne.example", AtlassianProduct.JIRA, TeamConfig.AuthMode.OAUTH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageStartingWith("auth: oauth n'existe que sur Atlassian Cloud");
+    }
+
+    @Test
+    void modeAbsent_deductionHistorique() {
+        var conn = factory.create(tokenUserCookie("token", "user", "JSESSIONID=x"),
+                "https://jira.interne.example", AtlassianProduct.JIRA, null);
+
+        assertThat(conn.mode()).isEqualTo("cookie");
     }
 }

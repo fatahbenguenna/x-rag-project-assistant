@@ -17,24 +17,39 @@ llm:
   # repartirait sinon à ~1.0 et perdrait le cadrage factuel).
   # temperature: 0.1
 
+# Chaque source sépare COMMENT s'y connecter (connection) de CE qu'on y récupère (spaces,
+# group, projects). La forme historique — base-url directement sous la source — reste
+# acceptée (connection.type: rest), avec un avertissement au démarrage.
 sources:
   confluence:
-    # base-url = racine de l'API, PAS une URL de navigateur (ni /spaces, ni /pages...).
-    #   Cloud       : https://votre-org.atlassian.net/wiki   (suffixe /wiki OBLIGATOIRE)
-    #   Data Center : https://confluence.interne.example
-    base-url: https://confluence.example.com
+    connection:
+      type: rest                # seul transport disponible aujourd'hui
+      # base-url = racine de l'API, PAS une URL de navigateur (ni /spaces, ni /pages...).
+      #   Cloud       : https://votre-org.atlassian.net/wiki   (suffixe /wiki OBLIGATOIRE)
+      #   Data Center : https://confluence.interne.example
+      base-url: https://confluence.example.com
+      # auth : cookie | basic | bearer | scoped | oauth — variables attendues dans .env
+      # (voir .env.example). Absent = déduit des variables renseignées (cookie > oauth >
+      # basic > scoped > bearer) : préférer un mode explicite, vérifié au démarrage.
+      auth: bearer
     spaces: [PASS, ARCHI]
   gitlab:
-    # base-url = racine de l'instance, SANS le chemin du groupe.
-    #   SaaS : https://gitlab.com      Self-managed : https://gitlab.interne.example
-    base-url: https://gitlab.example.com
+    connection:
+      type: rest
+      # base-url = racine de l'instance, SANS le chemin du groupe.
+      #   SaaS : https://gitlab.com      Self-managed : https://gitlab.interne.example
+      # Pas de champ auth : GITLAB_TOKEN (.env) est toujours envoyé en PRIVATE-TOKEN.
+      base-url: https://gitlab.example.com
     group: passerelle           # découverte automatique des repos du groupe
     branches: [main, develop]
   jira:
-    # base-url = racine du site, SANS /jira ni /wiki.
-    #   Cloud       : https://votre-org.atlassian.net
-    #   Data Center : https://jira.interne.example
-    base-url: https://jira.example.com
+    connection:
+      type: rest
+      # base-url = racine du site, SANS /jira ni /wiki.
+      #   Cloud       : https://votre-org.atlassian.net
+      #   Data Center : https://jira.interne.example
+      base-url: https://jira.example.com
+      auth: bearer
     projects: [PASS, INFRA]
 
 # Résolution d'entités : toutes les façons de nommer un projet/sujet -> id canonique.

@@ -76,12 +76,16 @@ flowchart TD
 
 ## 4. Résolution de l'authentification Atlassian
 
-Cinq modes, résolus dans cet ordre depuis le `.env` (première condition vraie
-retenue) — détail des variables : README « Authentification » et `.env.example`.
+Cinq modes. `connection.auth` (team-config.yml) fixe le mode, dont les variables sont
+vérifiées au démarrage ; sans lui, le mode est déduit du `.env` dans cet ordre (première
+condition vraie retenue) — détail des variables : README « Authentification » et
+`.env.example`.
 
 ```mermaid
 flowchart TD
-    START["Variables .env de la source<br/>(CONFLUENCE_* ou JIRA_*)"] --> C1{"*_COOKIE ?"}
+    START["Source Confluence ou Jira"] --> C0{"connection.auth<br/>renseigné ?"}
+    C0 -->|oui| EXPLICIT["Mode appliqué tel quel<br/>(démarrage refusé si une variable<br/>du mode est vide, ou scoped hors Cloud)"]
+    C0 -->|"non — déduction depuis<br/>CONFLUENCE_* ou JIRA_*"| C1{"*_COOKIE ?"}
     C1 -->|oui| COOKIE["① cookie — session navigateur (SSO)<br/>dev/validation, expire avec la session"]
     C1 -->|non| C2{"*_OAUTH_CLIENT_ID<br/>+ *_OAUTH_CLIENT_SECRET ?"}
     C2 -->|oui| OAUTH["② oauth — client credentials Cloud<br/>recommandé en production<br/>(token auto-rafraîchi, api.atlassian.com)"]

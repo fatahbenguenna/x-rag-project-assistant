@@ -21,13 +21,25 @@ public record SourceAuth(String mode, String headerName, String headerValue) {
 
     public static SourceAuth resolve(String token, String user, String cookie) {
         if (cookie != null && !cookie.isBlank()) {
-            return new SourceAuth("cookie", HttpHeaders.COOKIE, cookie.trim());
+            return cookie(cookie);
         }
         if (user != null && !user.isBlank()) {
-            String credentials = Base64.getEncoder().encodeToString(
-                    (user + ":" + token).getBytes(StandardCharsets.UTF_8));
-            return new SourceAuth("basic", HttpHeaders.AUTHORIZATION, "Basic " + credentials);
+            return basic(user, token);
         }
+        return bearer(token);
+    }
+
+    public static SourceAuth cookie(String cookie) {
+        return new SourceAuth("cookie", HttpHeaders.COOKIE, cookie.trim());
+    }
+
+    public static SourceAuth basic(String user, String token) {
+        String credentials = Base64.getEncoder().encodeToString(
+                (user + ":" + token).getBytes(StandardCharsets.UTF_8));
+        return new SourceAuth("basic", HttpHeaders.AUTHORIZATION, "Basic " + credentials);
+    }
+
+    public static SourceAuth bearer(String token) {
         return new SourceAuth("bearer", HttpHeaders.AUTHORIZATION, "Bearer " + token);
     }
 }

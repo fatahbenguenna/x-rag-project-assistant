@@ -42,21 +42,24 @@ public class ConnectorsConfiguration {
         Optional<GitLabConnector> gitlab = Optional.empty();
 
         if (sources.confluence() != null) {
+            var confluence = sources.confluence();
+            warnIfLegacy("confluence", confluence.legacyBaseUrl());
             var connection = atlassianConnection(env, "CONFLUENCE",
-                    sources.confluence().baseUrl(), AtlassianProduct.CONFLUENCE);
-            log.info("Confluence : authentification {}", connection.mode());
-            documentConnectors.add(new ConfluenceConnector(sources.confluence(), connection));
+                    confluence.connection(), AtlassianProduct.CONFLUENCE);
+            documentConnectors.add(new ConfluenceConnector(confluence, connection));
         }
         if (sources.gitlab() != null) {
+            warnIfLegacy("gitlab", sources.gitlab().legacyBaseUrl());
             gitlab = Optional.of(new GitLabConnector(
                     sources.gitlab(), env.getProperty("GITLAB_TOKEN", "")));
             documentConnectors.add(gitlab.get());
         }
         if (sources.jira() != null) {
+            var jira = sources.jira();
+            warnIfLegacy("jira", jira.legacyBaseUrl());
             var connection = atlassianConnection(env, "JIRA",
-                    sources.jira().baseUrl(), AtlassianProduct.JIRA);
-            log.info("Jira : authentification {}", connection.mode());
-            documentConnectors.add(new JiraConnector(sources.jira(), connection));
+                    jira.connection(), AtlassianProduct.JIRA);
+            documentConnectors.add(new JiraConnector(jira, connection));
         }
 
         log.info("Connecteurs actifs : {}",
@@ -65,13 +68,32 @@ public class ConnectorsConfiguration {
     }
 
     private AtlassianConnection atlassianConnection(Environment env, String prefix,
-                                                    String baseUrl, AtlassianProduct product) {
+                                                    TeamConfig.Connection config,
+                                                    AtlassianProduct product) {
         var creds = new SourceCredentials(
                 env.getProperty(prefix + "_TOKEN", ""),
                 env.getProperty(prefix + "_USER", ""),
                 env.getProperty(prefix + "_COOKIE", ""),
                 env.getProperty(prefix + "_OAUTH_CLIENT_ID", ""),
                 env.getProperty(prefix + "_OAUTH_CLIENT_SECRET", ""));
-        return connectionFactory.create(creds, baseUrl, product);
+        var mode = config.auth();
+        if (mode != null) {
+            creds.requireFor(mode, prefix);
+        }
+        var connection = connectionFactory.create(creds, config.baseUrl(), product, mode);
+        if (mode != null) {
+            log.info("{} : authentification {}", product.slug(), connection.mode());
+        } else {
+            log.info("{} : authentification {} (déduite des variables .env — la fixer avec "
+                    + "connection.auth dans team-config.yml)", product.slug(), connection.mode());
+        }
+        return connection;
+    }
+
+    private static void warnIfLegacy(String source, String legacyBaseUrl) {
+        if (legacyBaseUrl != null && !legacyBaseUrl.isBlank()) {
+            log.warn("sources.{}.base-url est la forme historique : la déplacer sous "
+                    + "sources.{}.connection.base-url (voir team-config.example.yml)", source, source);
+        }
     }
 }

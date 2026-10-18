@@ -1,13 +1,15 @@
 package com.domwil.xrag.adapter.out.atlassian;
 
 import com.domwil.xrag.adapter.out.SourceAuth;
+import com.domwil.xrag.config.TeamConfig;
 import org.springframework.web.client.RestClient;
 
 /**
  * Construit le profil de {@link AtlassianConnection} adéquat selon les credentials
  * fournis ({@link SourceCredentials}) et la nature du site.
  *
- * <p>Priorité de résolution :
+ * <p>Un mode explicite ({@code connection.auth} dans team-config.yml) est appliqué tel quel.
+ * Sans lui, priorité de résolution historique :
  * <ol>
  *   <li><b>cookie</b> — sessions self-hosted (domaine direct) ;</li>
  *   <li><b>oauth</b> — client_id + client_secret : OAuth 2.0 client credentials, passerelle ;</li>
@@ -27,6 +29,39 @@ public final class AtlassianConnectionFactory {
                                       RestClient.Builder oauthClientBuilder) {
         this.cloudIdResolver = cloudIdResolver;
         this.oauthClientBuilder = oauthClientBuilder;
+    }
+
+    /**
+     * Mode explicite ({@code connection.auth}) : appliqué tel quel, sans déduction — les
+     * autres variables renseignées sont ignorées. {@code null} = déduction historique.
+     * Les secrets du mode doivent avoir été vérifiés ({@link SourceCredentials#requireFor}).
+     */
+    public AtlassianConnection create(SourceCredentials creds, String baseUrl, AtlassianProduct product,
+                                      TeamConfig.AuthMode mode) {
+        if (mode == null) {
+            return create(creds, baseUrl, product);
+        }
+        return switch (mode) {
+            case COOKIE -> new DirectConnection(baseUrl, SourceAuth.cookie(creds.cookie()));
+            case BASIC -> new DirectConnection(baseUrl, SourceAuth.basic(creds.user(), creds.token()));
+            case BEARER -> new DirectConnection(baseUrl, SourceAuth.bearer(creds.token()));
+            case SCOPED -> {
+                requireCloud(mode, baseUrl);
+                yield new GatewayTokenConnection(gatewayBaseUrl(baseUrl, product), creds.token());
+            }
+            case OAUTH -> {
+                requireCloud(mode, baseUrl);
+                yield oauth(creds, baseUrl, product);
+            }
+        };
+    }
+
+    /** scoped et oauth passent par la passerelle api.atlassian.com : Cloud uniquement. */
+    private static void requireCloud(TeamConfig.AuthMode mode, String baseUrl) {
+        if (!AtlassianPlatform.of(baseUrl).isCloud()) {
+            throw new IllegalStateException("auth: " + mode.label() + " n'existe que sur Atlassian Cloud "
+                    + "(*.atlassian.net) — pour un PAT Data Center, utiliser auth: bearer");
+        }
     }
 
     public AtlassianConnection create(SourceCredentials creds, String baseUrl, AtlassianProduct product) {
