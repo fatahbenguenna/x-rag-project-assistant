@@ -17,7 +17,7 @@ _Ce fichier contient les règles et patterns critiques que les agents IA doivent
 
 ## Stack technique & versions
 
-- Java **21**, Spring Boot **4.1.0** (parent Maven), Spring AI **2.0.0** (BOM)
+- Java **21**, Spring Boot **4.1.0** (parent Maven), Spring AI **2.1.0-RC1** (BOM)
 - Starters : `webflux`, `jdbc` (pas de JPA), `validation`, `actuator`, `spring-boot-starter-liquibase` (Boot 4 exige ce starter dédié), `spring-ai-starter-model-ollama`, `spring-ai-starter-model-google-genai`, `spring-ai-starter-vector-store-pgvector`
 - **Jackson 3** (`tools.jackson.*`) — Boot 4 n'auto-configure plus Jackson 2 : ne jamais importer `com.fasterxml.jackson` (les codecs HTTP ne désérialisent plus vers les types Jackson 2)
 - JavaParser **3.26.4** (extraction déterministe Java) ; PostgreSQL **16** + pgvector, `embedding vector(1024)` (bge-m3), index HNSW
