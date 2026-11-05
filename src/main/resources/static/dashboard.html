@@ -391,6 +391,8 @@
       if (s.startsWith("OK")) return `<span class="badge ok"><span class="b-led"></span>OK</span>`;
       if (s.startsWith("ERREUR") || s.startsWith("ERROR"))
         return `<span class="badge err"><span class="b-led"></span>Erreur</span>`;
+      if (s.startsWith("PARTIEL"))
+        return `<span class="badge err" title="${esc(status)}"><span class="b-led"></span>Partiel</span>`;
       if (s.startsWith("EN COURS")) return `<span class="badge run"><span class="b-led"></span>En cours</span>`;
       return `<span class="badge idle"><span class="b-led"></span>${esc(status || "—")}</span>`;
     }

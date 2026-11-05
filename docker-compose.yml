@@ -63,6 +63,10 @@ services:
       # dans .env (voir .env.example). host.docker.internal résout l'hôte grâce à extra_hosts.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       TEAM_CONFIG: /config/team-config.yml
+      # Fuseau des crons (batch schedule.nightly, warm-up 07:30) et des logs. Sans lui, le
+      # conteneur est en UTC : le warm-up de 07:30 tombait à 09:30 à Paris en été.
+      # Variable dédiée (XRAG_TZ) : un TZ du shell hôte ne l'écrase pas.
+      TZ: ${XRAG_TZ:-Europe/Paris}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

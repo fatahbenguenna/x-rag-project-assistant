@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 /**
  * Webhooks GitLab (push + merge_request) : upsert temps réel en journée,
  * pendant que Confluence/Jira restent au rythme du batch nocturne.
@@ -34,7 +37,12 @@ public class GitLabWebhookController {
                                    @Value("${GITLAB_WEBHOOK_TOKEN:}") String expectedToken) {
         this.syncService = syncService;
         this.taskExecutor = taskExecutor;
-        this.expectedToken = expectedToken;
+        this.expectedToken = expectedToken == null ? "" : expectedToken.strip();
+        if (this.expectedToken.isEmpty()) {
+            log.warn("GITLAB_WEBHOOK_TOKEN non configuré : POST /api/webhooks/gitlab accepte tout "
+                    + "appel non authentifié qui atteint ce port — à réserver au développement "
+                    + "(voir .env.example)");
+        }
     }
 
     @PostMapping("/api/webhooks/gitlab")
@@ -42,7 +50,7 @@ public class GitLabWebhookController {
             @RequestHeader("X-Gitlab-Event") String event,
             @RequestHeader(value = "X-Gitlab-Token", required = false) String token,
             @RequestBody JsonNode payload) {
-        if (!expectedToken.isBlank() && !expectedToken.equals(token)) {
+        if (!expectedToken.isEmpty() && !tokenMatches(token)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         switch (event) {
@@ -58,5 +66,12 @@ public class GitLabWebhookController {
             default -> log.debug("Webhook GitLab ignoré : {}", event);
         }
         return ResponseEntity.accepted().build();
+    }
+
+    /** Comparaison en temps constant — un secret ne se compare jamais avec equals(). */
+    private boolean tokenMatches(String provided) {
+        return provided != null && MessageDigest.isEqual(
+                expectedToken.getBytes(StandardCharsets.UTF_8),
+                provided.getBytes(StandardCharsets.UTF_8));
     }
 }

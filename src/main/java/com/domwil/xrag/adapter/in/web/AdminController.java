@@ -11,12 +11,15 @@ import com.domwil.xrag.application.SyncService;
 import com.domwil.xrag.domain.port.MaintenanceRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.Map;
 
@@ -74,9 +77,19 @@ public class AdminController {
         return ResponseEntity.accepted().body(Map.of("started", true));
     }
 
+    /**
+     * Smoke test synchrone (plusieurs minutes en CPU). Exécuté sur boundedElastic : sur
+     * l'event loop, le {@code block()} du service levait une exception et chaque question
+     * ressortait « KO ». Répond 503 si une question échoue, pour que {@code curl -f}
+     * (bootstrap.sh) détecte l'échec.
+     */
     @PostMapping("/smoke-test")
-    public Map<String, Object> smokeTest() {
-        return Map.of("report", smokeTests.run());
+    public Mono<ResponseEntity<Map<String, Object>>> smokeTest() {
+        return Mono.fromCallable(smokeTests::run)
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(report -> ResponseEntity
+                        .status(report.passed() ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(Map.<String, Object>of("report", report.summary(), "passed", report.passed())));
     }
 
     @GetMapping("/status")

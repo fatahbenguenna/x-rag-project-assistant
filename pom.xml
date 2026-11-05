@@ -87,7 +87,7 @@
     <dependency>
       <groupId>com.github.javaparser</groupId>
       <artifactId>javaparser-core</artifactId>
-      <version>3.26.4</version>
+      <version>3.28.2</version>
     </dependency>
 
     <!-- Reranker cross-encoder ONNX in-process (DJL ; onnxruntime CPU transitif via le BOM) -->

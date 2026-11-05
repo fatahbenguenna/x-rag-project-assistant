@@ -71,7 +71,7 @@ flowchart TD
     LLME --> SHEETS["Fiches projet régénérées<br/>(avec voisinage graphe)"]
     SHEETS --> QUAL["Éval qualité du graphe (verdict)<br/>+ éval recall@k (eval.cases)<br/>+ smoke test (questions canoniques)"]
     QUAL --> NOTIF["Notification ~02:45<br/>(NOTIFY_WEBHOOK_URL ou logs)"]
-    NOTIF -.-> WARM(["07:30 — warm-up de l'embedding bge-m3 ;<br/>le LLM de chat reste chargé<br/>via OLLAMA_KEEP_ALIVE=24h"])
+    NOTIF -.-> WARM(["07:30 (fuseau XRAG_TZ) — warm-up de bge-m3<br/>et des modèles de chat Ollama (principal + fallback),<br/>gardés chargés si OLLAMA_KEEP_ALIVE=24h côté serveur"])
 ```
 
 ## 4. Résolution de l'authentification Atlassian

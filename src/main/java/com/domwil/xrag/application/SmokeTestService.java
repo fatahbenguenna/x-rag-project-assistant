@@ -28,18 +28,32 @@ public class SmokeTestService {
         this.ragChatService = ragChatService;
     }
 
-    public String run() {
-        var report = new ArrayList<String>();
-        List<GraphNode> projects = aliases.declaredProjectNodes();
-        for (GraphNode project : projects.subList(0, Math.min(MAX_QUESTIONS, projects.size()))) {
-            String question = "Explique-moi le projet " + project.name() + " en 3 principes.";
-            report.add(ask(question));
-        }
-        report.add(ask("Quelle merge request ouverte est la plus vieille ?"));
+    /** Rapport lisible (une ligne par question) et verdict global : vrai si toutes les questions sont OK. */
+    public record Report(String summary, boolean passed) {
+    }
 
-        String summary = String.join("\n", report);
-        log.info("Smoke test :\n{}", summary);
-        return summary;
+    /**
+     * Bloquant (jusqu'à {@code TIMEOUT} par question) : à appeler hors de l'event loop
+     * WebFlux, où {@code block()} lève une exception.
+     */
+    public Report run() {
+        var lines = new ArrayList<String>();
+        boolean passed = true;
+        List<GraphNode> projects = aliases.declaredProjectNodes();
+        var questions = new ArrayList<String>();
+        for (GraphNode project : projects.subList(0, Math.min(MAX_QUESTIONS, projects.size()))) {
+            questions.add("Explique-moi le projet " + project.name() + " en 3 principes.");
+        }
+        questions.add("Quelle merge request ouverte est la plus vieille ?");
+        for (String question : questions) {
+            String line = ask(question);
+            passed &= line.startsWith("OK");
+            lines.add(line);
+        }
+
+        String summary = String.join("\n", lines);
+        log.info("Smoke test {} :\n{}", passed ? "réussi" : "EN ÉCHEC", summary);
+        return new Report(summary, passed);
     }
 
     private String ask(String question) {
@@ -48,7 +62,7 @@ public class SmokeTestService {
             List<String> parts = ragChatService.answer(question, null).collectList().block(TIMEOUT);
             String answer = parts == null ? "" : String.join("", parts);
             long elapsed = (System.currentTimeMillis() - start) / 1000;
-            return (answer == null || answer.isBlank() ? "KO (réponse vide)" : "OK")
+            return (answer.isBlank() ? "KO (réponse vide)" : "OK")
                     + " en " + elapsed + " s — " + question;
         } catch (Exception e) {
             return "KO (" + e.getMessage() + ") — " + question;

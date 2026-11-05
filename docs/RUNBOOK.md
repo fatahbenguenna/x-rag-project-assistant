@@ -110,8 +110,8 @@ Le RAG appelle Ollama via `OLLAMA_BASE_URL` (`.env`). Le choix de l'hébergement
 | Mode | Quand | `.env` | Où lancer Ollama / puller les modèles |
 |---|---|---|---|
 | **Conteneur** | Portable, pas de GPU | `COMPOSE_PROFILES=ollama-docker` · `OLLAMA_BASE_URL=` (vide) | Rien à installer. `docker exec xrag-ollama ollama pull …` |
-| **Natif Windows** | GPU sur Windows | `COMPOSE_PROFILES=` (sans `ollama-docker`) · `OLLAMA_BASE_URL=http://host.docker.internal:11434` | 🪟 Installer Ollama for Windows · `setx OLLAMA_HOST 0.0.0.0` puis relancer Ollama · `ollama pull …` (PowerShell) |
-| **WSL** | GPU NVIDIA (CUDA) dans WSL | idem natif : `COMPOSE_PROFILES=` · `OLLAMA_BASE_URL=http://host.docker.internal:11434` | 🐧 `curl -fsSL https://ollama.com/install.sh \| sh` · lancer avec `OLLAMA_HOST=0.0.0.0 ollama serve` · `ollama pull …` (WSL) |
+| **Natif Windows** | GPU sur Windows | `COMPOSE_PROFILES=` (sans `ollama-docker`) · `OLLAMA_BASE_URL=http://host.docker.internal:11434` | 🪟 Installer Ollama for Windows · `setx OLLAMA_HOST 0.0.0.0` et `setx OLLAMA_KEEP_ALIVE 24h` puis relancer Ollama · `ollama pull …` (PowerShell) |
+| **WSL** | GPU NVIDIA (CUDA) dans WSL | idem natif : `COMPOSE_PROFILES=` · `OLLAMA_BASE_URL=http://host.docker.internal:11434` | 🐧 `curl -fsSL https://ollama.com/install.sh \| sh` · lancer avec `OLLAMA_HOST=0.0.0.0 OLLAMA_KEEP_ALIVE=24h ollama serve` · `ollama pull …` (WSL) |
 
 **Natif Windows et WSL partagent le même `.env`** (`host.docker.internal:11434`) : vus depuis
 le conteneur rag-api, les deux sont « l'hôte ». Un seul peut occuper le port 11434 à la fois.
@@ -177,7 +177,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Ré-indexer une source | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" 'localhost:8080/api/admin/sync?source=jira&full=true'` — `full=true` force la ré-indexation (récupère les changements d'extraction, ex. commentaires, même version inchangée) |
 | Batch à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/nightly` |
 | Éval du retrieval (recall@k) | 🐧 | `curl -s localhost:8080/api/admin/eval` — rejoue les questions canoniques `eval.cases` de team-config.yml, sans LLM ; rapport aussi dans la notification nocturne |
-| Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) |
+| Smoke test à la demande | 🐧 | `curl -X POST -H "X-Admin-Token: $ADMIN_TOKEN" localhost:8080/api/admin/smoke-test` (exécuté automatiquement en fin de bootstrap et de batch) — HTTP 503 si une question échoue |
 | Latences vs cibles | 🐧 | `./scripts/measure-latency.sh` |
 
 ## 8. Exploitation courante
@@ -212,7 +212,7 @@ où c'était. Le smoke test s'exécute automatiquement à la fin.
 | Conteneur `ollama` tué / OOM | Limite mémoire WSL2 | §1.2 `.wslconfig` `memory=20GB`, `wsl --shutdown` |
 | Indexation très lente, I/O saturées | Dépôt cloné sous `/mnt/c` | Recloner dans `~` (FS ext4 de WSL) |
 | Compteurs `status` figés à 0 | Connexion source en échec en cours de route | `docker compose logs rag-api`, re-préflight |
-| 1er token > 30 s après une pause | Modèle déchargé de la RAM | `OLLAMA_KEEP_ALIVE=24h` (défaut du compose) + warm-up 07:30 du batch |
+| 1er token > 30 s après une pause | Modèle déchargé de la RAM | `OLLAMA_KEEP_ALIVE=24h` côté serveur Ollama (défaut du compose en mode conteneur ; en natif/WSL, à poser dans l'environnement du démon, voir §4) + warm-up 07:30 du batch |
 | Pas de batch cette nuit | Poste/WSL éteint à 02:00 | Rattrapage manuel (§8) |
 | `curl : option -u inconnue` | Vous êtes dans PowerShell (alias `Invoke-WebRequest`) | Utiliser le terminal 🐧 WSL, ou `curl.exe` |
 
